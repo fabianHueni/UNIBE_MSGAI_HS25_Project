@@ -24,8 +24,30 @@ body {
     }
 }
 /* Custom toggle switch */
+.toggle-checkbox {
+    /* knob */
+    position: absolute;
+    top: 0.25rem; /* aligns inside the track */
+    left: 0.25rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 9999px;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+    transform: translateX(0);
+}
+.toggle-label {
+    /* track */
+    display: block;
+    width: 2.5rem; /* matches wrapper w-10 */
+    height: 1.5rem; /* matches h-6 */
+    background: #d1d5db;
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
 .toggle-checkbox:checked {
-    right: 0;
+    transform: translateX(1rem); /* slide knob to the right */
     border-color: #4f46e5;
 }
 .toggle-checkbox:checked + .toggle-label {

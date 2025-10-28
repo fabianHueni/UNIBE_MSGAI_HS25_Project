@@ -8,6 +8,7 @@
 
     <script src="./index.js" type="module"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="./style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 
 </head>
@@ -29,7 +30,7 @@
         <p class="text-lg text-gray-600 mt-2">Convert document images to HTML using 🤗 Transformers.js!</p>
     </header>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <!-- Left Panel: Image Input -->
         <div class="bg-white p-6 rounded-lg shadow-md">
             <h2 class="text-2xl font-semibold mb-4">1. Select an Image</h2>
@@ -120,7 +121,7 @@
             </div>
         </div>
 
-        <!-- Right Panel: Output -->
+        <!-- Middle Panel: Output -->
         <div class="bg-white p-6 rounded-lg shadow-md flex flex-col">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-semibold">2. View Result</h2>
@@ -152,14 +153,31 @@
 
                 <!-- Docling Output -->
                 <div id="docling-view" class="h-full p-4 hidden">
-                        <pre class="h-full whitespace-pre-wrap text-sm overflow-auto"><code
-                                id="docling-output"></code></pre>
+                    <pre class="h-full whitespace-pre-wrap text-sm overflow-auto"><code
+                            id="docling-output"></code></pre>
                 </div>
 
                 <!-- HTML Output -->
                 <div id="html-view" class="h-full w-full">
                     <iframe id="html-iframe" sandbox="allow-scripts" class="w-full h-full border-0"></iframe>
                 </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Statistics and Drug Matches -->
+        <div class="bg-white p-6 rounded-lg shadow-md flex flex-col min-h-[600px]">
+            <h2 class="text-2xl font-semibold mb-4">3. Analysis Results</h2>
+            
+            <!-- Detection Statistics -->
+            <div class="mb-6">
+                <h3 class="text-lg font-semibold mb-3 text-gray-800">Detection Statistics</h3>
+                <div id="detection-stats" class="bg-gray-50 p-4 rounded-lg"></div>
+            </div>
+
+            <!-- Drug Matches -->
+            <div class="flex-1 min-h-[400px] flex flex-col">
+                <h3 class="text-lg font-semibold mb-3 text-gray-800">Medication Matches</h3>
+                <div id="drug-matches" class="bg-gray-50 p-4 rounded-lg flex-1 overflow-auto"></div>
             </div>
         </div>
     </div>
