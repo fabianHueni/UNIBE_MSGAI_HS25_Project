@@ -5,7 +5,7 @@ Project of the Modeling and Scaling of Generative AI Systems lecture at the Univ
 The project aims to transform images of analog medication lists (e.g., handwritten or printed lists) into structured digital formats. 
 This involves several key steps:
 - Image to Text Conversion: Utilizing a pre-trained docling model to extract text and tables from images.
-- Mapping to Vocabulary: Converting the extracted text into a predefined vocabulary of medications.
+- Mapping to Vocabulary: Converting the extracted text into a predefined vocabulary of medications. As a predefined vocabulary we use a csv-file with all FDA Drugs, available at https://www.kaggle.com/datasets/protobioengineering/united-states-fda-drugs-feb-2024. 
 - Transform to Structured Format: Organizing the mapped data into a structured format such as JSON or CSV for further processing.
 
 The project is oriented on the Granit Docling WebGPU demo on huggingface (https://huggingface.co/spaces/ibm-granite/granite-docling-258M-WebGPU).
