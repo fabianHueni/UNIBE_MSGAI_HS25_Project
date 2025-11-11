@@ -1,15 +1,18 @@
 import {sleep} from './utils.js';
 
-
 /**
  * JobScheduler emits jobs based on predefined patterns.
  * Can be used to simulate different load scenarios like batch processing or on-request per second
  */
 export class JobScheduler {
-    constructor(promptSource = []) {
-        this.promptSource = promptSource;
+    constructor(datasetName = 'boolq_validation') {
+        // TODO implement dataset loading based on configuration parameter
         this.running = false;
+        this._dataset = null;
         this._onJob = null; // callback
+        this._datasetName = datasetName
+
+        this._loadDataset(this._datasetName);
     }
 
 
@@ -31,27 +34,27 @@ export class JobScheduler {
         // once per second until user stopp evaluation
         if (patternName === 'once-per-sec') {
             let i = 0;
-            while (this.running) {
-                this._emit(i++);
+            while (this._dataset.length > 0 && this.running) {
+                console.log(this._dataset.length)
+                const item = this._dataset.pop();
+                this._emit(item);
                 await sleep(1000);
             }
-        } else if (patternName === 'ten-per-sec') {
+        } else if (patternName === 'every-ten-sec') {
             let i = 0;
             const interval = 100; // ms
-            while (this.running) {
-                this._emit(i++);
+            while (this._dataset.length > 0 && this.running) {
+                const item = this._dataset.pop();
+                this._emit(item);
                 await sleep(interval);
             }
         } else if (patternName === 'batch-10-every-5s') {
             let i = 0;
             while (this.running) {
+                // TODO implement batch processing!
                 for (let j = 0; j < 10 && this.running; j++) this._emit(i++);
                 await sleep(5000);
             }
-        } else if (patternName === 'burst') {
-            // single burst
-            for (let i = 0; i < 50; i++) this._emit(i);
-            this.running = false;
         }
     }
 
@@ -63,17 +66,44 @@ export class JobScheduler {
         this.running = false;
     }
 
-    _pickPrompt(id) {
-        if (this.promptSource.length === 0) return {prompt: `Hello world ${id}`, groundTruth: `Hello world ${id}`};
-        return this.promptSource[id % this.promptSource.length];
-    }
 
-
-    _emit(id) {
+    /**
+     * Emit a job with the item from the dataset to process
+     *
+     * @param item - The dataset item containing prompt and ground truth
+     * @private
+     */
+    _emit(item) {
         if (this._onJob) {
-            const p = this._pickPrompt(id);
-            const job = {id: `job-${Date.now()}-${id}`, prompt: p.prompt, groundTruth: p.groundTruth};
+            const job = {prompt: item.prompt, groundTruth: item.groundTruth};
             this._onJob(job);
         }
+    }
+
+    /**
+     * Load the dataset from CSV file based on the given name
+     *
+     * @param name - Name of the csv dataset to load without file extension
+     * @private
+     */
+    _loadDataset(name) {
+        const path = `./dataset/${name}.csv`;
+
+        fetch(path)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`Dataset file not found: ${path}`);
+                }
+                return response.text();
+            })
+            .then(data => {
+                this._dataset = data.split('\n').slice(1).map(line => {
+                    const [question, answer, context] = line.split(',');
+                    return {prompt: question, groundTruth: answer};
+                });
+            })
+            .catch(error => {
+                console.error(error);
+            });
     }
 }

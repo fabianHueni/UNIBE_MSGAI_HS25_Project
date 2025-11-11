@@ -87,7 +87,7 @@ export class RequestManager {
      * Handle a single inference job by routing it to the appropriate service,
      * performing inference, evaluating the result, and recording statistics.
      *
-     * @param job
+     * @param job - The job object containing prompt and ground truth
      * @returns {Promise<{route: string, latency: number, text: string, job, evalRes: (*|XPathResult|{exact: *, f1: *})}>}
      */
     async handle(job) {

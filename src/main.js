@@ -20,22 +20,14 @@ const evaluator = new Evaluator();
 
 const requestManager = new RequestManager({
     deviceService: onDeviceInferenceService, cloudService: cloudInferenceService, evaluator, logger: evt => {
-        logTo(logEl, `${evt.job.id} -> ${evt.route} | latency=${evt.latency}ms | exact=${evt.evalRes.exact} f1=${evt.evalRes.f1.toFixed(2)}`);
+        logTo(logEl, `${evt.job.id} -> ${evt.route} | latency=${evt.latency}ms | exact=${evt.evalRes.exact} | question="${evt.job.prompt.substring(0, 30)}..."`);
         updateStats();
     }
 });
 
 
 // instantiate the job scheduler with some mock prompts TODO: replace with real prompts
-const scheduler = new JobScheduler([
-    {prompt: 'Translate to German: Hello world', groundTruth: 'Hallo Welt'},
-    {
-        prompt: 'What is 3*6?',
-        groundTruth: '18'
-    },
-    {prompt: 'Answer: What is 2+2?', groundTruth: '4'},
-    {prompt: 'What is the capital of switzerland?', groundTruth: 'Bern'}
-]);
+const scheduler = new JobScheduler('boolq_validation');
 
 
 scheduler.onJob(async (job) => {
@@ -87,19 +79,69 @@ document.getElementById('stopBtn').addEventListener('click', () => {
     document.getElementById('stopBtn').disabled = true;
 });
 
+document.getElementById('downloadStats').addEventListener('click', () => {
+    downloadStats();
+});
+document.getElementById('loadDeviceModelBtn').addEventListener('click', () => {
+    loadDeviceModel();
+});
+
 
 async function loadDeviceModel() {
     deviceStatusEl.textContent = 'Loading...';
+    document.getElementById('loadDeviceModelBtn').disabled = true;
     try {
         await onDeviceInferenceService.load((s) => deviceStatusEl.textContent = s);
-        deviceStatusEl.textContent = 'Ready';
+        deviceStatusEl.textContent = 'Model Ready';
     } catch (e) {
         deviceStatusEl.textContent = `Error: ${e.message}`;
+        document.getElementById('loadDeviceModelBtn').disabled = false;
     }
 }
 
+function downloadStats() {
+    const s = requestManager.stats;
+    // add average latency to stats for device and cloud
+    s.avgLatencyMs = s.count ? (s.totalLatencyMs / s.count) : 0;
+    s.avgDeviceLatencyMs = s.device ? (s.evaluations.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device) : 0;
+    s.avgCloudLatencyMs = s.cloud ? (s.evaluations.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud) : 0;
 
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(s, null, 2));
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("download", "stats.json");
+    dlAnchorElem.click();
+}
+
+/**
+ * Update the statistics display in the UI based on the request manager's stats
+ */
 function updateStats() {
     const s = requestManager.stats;
-    statsEl.innerHTML = `<pre>Processed: ${s.count}\nCloud: ${s.cloud}\nDevice: ${s.device}\nAvg latency (ms): ${s.count ? (s.totalLatencyMs / s.count).toFixed(1) : 0}\nRecent evaluations: ${Math.min(10, s.evaluations.length)}</pre>`;
+
+    statsEl.innerHTML = `
+        <div style="display: flex; justify-content: space-between;">
+            <div>
+                <h3>General Stats</h3>
+                <pre>
+Processed: ${s.count}
+Avg latency (ms): ${s.count ? (s.totalLatencyMs / s.count).toFixed(1) : 0}
+Recent evaluations: ${Math.min(10, s.evaluations.length)}
+                </pre>
+            </div>
+            <div>
+                <h3>Cloud Stats</h3>
+                <pre>
+Requests: ${s.cloud}
+Avg latency (ms): ${s.cloud ? (s.evaluations.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+                </pre>
+            </div>
+            <div>
+                <h3>On-Device Stats</h3>
+                <pre>
+Requests: ${s.device}
+Avg latency (ms): ${s.cloud ? (s.evaluations.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+                </pre>
+            </div>
+        </div>`;
 }

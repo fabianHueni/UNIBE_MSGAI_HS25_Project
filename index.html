@@ -25,6 +25,7 @@
             <h2>On-Device</h2>
             <label>Model (transformers.js) <input id="deviceModel" value="distilgpt2" /></label>
             <div id="deviceStatus">Not loaded</div>
+            <button id="loadDeviceModelBtn">Load Model</button>
         </div>
 
 
@@ -32,9 +33,9 @@
             <h2>Request Pattern</h2>
             <select id="patternSelect">
                 <option value="once-per-sec">1 request / sec</option>
-                <option value="ten-per-sec">10 requests / sec</option>
-                <option value="batch-10-every-5s">Batch: 10 every 5s</option>
-                <option value="burst">Burst: 50 then idle</option>
+                <option value="every-ten-sec">Every 10 sec 1 request</option>
+                <option disabled value="batch-10-every-5s">(not implemented) Batch: 10 every 5s</option>
+                <option disabled value="burst">(not implemented) Burst: 50 then idle</option>
             </select>
             <label>Route strategy
                 <select id="routeStrategy">
@@ -51,11 +52,11 @@
             </div>
         </div>
 
-
         <div class="card wide">
             <h2>Live Log & Results</h2>
             <div id="log" class="log"></div>
             <div id="stats"></div>
+            <button id="downloadStats">Download Statistics</button>
         </div>
     </section>
 
