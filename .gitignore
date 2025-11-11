@@ -1,5 +1,5 @@
 # Project specific
-drugs.csv
+medicationlist/drugs.csv
 
 # macOS system files
 .DS_Store
