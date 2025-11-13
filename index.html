@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Browser LLM Evaluation</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- transformers.js CDN - adjust to latest release if needed -->
-    <script src="https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.6"></script>
+    <!-- Xenova transformers.js module import (no global script) -->
+    <!-- Remove HuggingFace CDN, use ES module import in main.js -->
 </head>
 <body>
 <main class="container">
@@ -23,7 +23,7 @@
 
         <div class="card">
             <h2>On-Device</h2>
-            <label>Model (transformers.js) <input id="deviceModel" value="distilgpt2" /></label>
+            <label>Model (transformers.js) <input id="deviceModel" value="Xenova/distilgpt2" /></label>
             <div id="deviceStatus">Not loaded</div>
             <button id="loadDeviceModelBtn">Load Model</button>
         </div>

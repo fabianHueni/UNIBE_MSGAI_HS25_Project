@@ -1,5 +1,7 @@
-// OnDeviceService: uses transformers.js to run a small causal LM in browser
-// Requires the transformers.js script loaded in index.html (cdn).
+
+// OnDeviceService: uses Xenova's transformers.js to run a small causal LM in browser
+// Uses ES module import for Xenova's transformers.js
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.7.0/dist/transformers.min.js';
 
 
 /**
@@ -7,7 +9,7 @@
  * TODO Implement this class!
  */
 export class OnDeviceService {
-    constructor({modelName = 'distilgpt2'} = {}) {
+    constructor({modelName = 'Xenova/distilgpt2'} = {}) {
         this.modelName = modelName;
         this._ready = false;
         this._model = null;
@@ -23,7 +25,11 @@ export class OnDeviceService {
      * @returns {Promise<void>}
      */
     async load(progressCb) {
-
+        // Xenova's pipeline API (ES module)
+        this._model = await pipeline('text-generation', this.modelName, {
+            progress_callback: progressCb
+        });
+        this._ready = true;
     }
 
 
@@ -45,7 +51,14 @@ export class OnDeviceService {
      * @returns {Promise<string>}
      */
     async infer(prompt, {maxNewTokens = 50} = {}) {
-        return "The Answer is 42!";
+        if (!this._ready || !this._model) {
+            throw new Error('Model not loaded. Call load() first.');
+        }
+        const output = await this._model(prompt, {
+            max_new_tokens: maxNewTokens
+        });
+        // Xenova's output is an array of objects with 'generated_text'
+        return output[0]?.generated_text || '';
     }
 
     /**
