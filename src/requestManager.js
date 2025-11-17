@@ -95,31 +95,31 @@ export class RequestManager {
         const route = this._choose(job);
         const service = this._getInferenceService(route);
 
-        const full_prompt = "Please answer the following question with True or False: " + job.prompt + "\nAnswer: "; // ensure string input
+        const full_prompt = "Please answer the following question either with true or false and only with true or false and no explaination: " + job.prompt + "\nAnswer: "; // ensure string input
 
-        let text, latencyMs;
+        let response, latencyMs; // response is object with .answer and .stats
         try {
             const {res, ms} = await measureAsync(() => service.infer(full_prompt));
-            text = res;
+            response = res;
             latencyMs = ms;
         } catch (err) {
-            text = `__error__:${err.message}`;
+            response = `__error__:${err.message}`;
             latencyMs = -1;
         }
 
         // evaluate result and store results
-        const evalRes = this.evaluator.evaluate(text, job.groundTruth, latencyMs);
-        this._record(route, latencyMs, evalRes, job, text);
+        const evalRes = this.evaluator.evaluate(response, job.groundTruth, latencyMs);
+        this._record(route, latencyMs, evalRes, job, response);
 
         // logging the result
-        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, text});
+        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, text: response});
 
         // logging on console
-        console.log("inference output:", text);
+        console.log("inference output:", response);
         console.log("inference latency:", latencyMs);
         console.log("eval result:", evalRes);
 
-        return {job, route, latency: latencyMs, evalRes, text};
+        return {job, route, latency: latencyMs, evalRes, text: response};
     }
 
 
