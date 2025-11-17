@@ -1,4 +1,3 @@
-
 // OnDeviceService: uses Xenova's transformers.js to run a small causal LM in browser
 // Uses ES module import for Xenova's transformers.js
 import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.7.0/dist/transformers.min.js';
@@ -25,12 +24,26 @@ export class OnDeviceService {
      * @returns {Promise<void>}
      */
     async load(progressCb) {
-        console.log("download model:", this.modelName);
+        console.log("Downloading model:", this.modelName);
+        // Provide a default progress callback if none is given
+        const defaultProgressCb = (progress) => {
+            if (progress && typeof progress === 'object') {
+                if (progress.status) {
+                    console.log(`[Model Loading] ${progress.status}`);
+                }
+                if (progress.loaded && progress.total) {
+                    const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
+                    console.log(`[Model Loading] ${percent}% (${progress.loaded}/${progress.total} bytes)`);
+                }
+            } else {
+                console.log(`[Model Loading] Progress:`, progress);
+            }
+        };
         // Xenova's pipeline API (ES module)
         this._model = await pipeline('text-generation', this.modelName, {
-            progress_callback: progressCb
+            progress_callback: progressCb || defaultProgressCb
         });
-        console.log("model loaded");
+        console.log("Model loaded and ready.");
         this._ready = true;
     }
 
@@ -52,28 +65,25 @@ export class OnDeviceService {
      * @param maxNewTokens - Maximum number of new tokens to generate
      * @returns {Promise<string>}
      */
-    async infer(prompt, {maxNewTokens = 50} = {}) {
-        console.log("run on device inference");
+    async infer(prompt, {maxNewTokens = 100} = {}) {
         if (!this._ready || !this._model) {
             console.log("model not ready:" , this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
         }
-
         prompt = "Please answer the following question: " + prompt + "\nAnswer: "; // ensure string input
-        console.log("infer on-device:", prompt);
+        console.log("running inference on-device:\n", prompt);
 
         const output = await this._model(prompt, {
             max_new_tokens: maxNewTokens,
-            temperature: 2,
+            temperature: 1.5,
             repetition_penalty: 1.5,
             no_repeat_ngram_size: 2,
             num_beams: 1,
-            num_return_sequences: 2,
-
+            num_return_sequences: 1,
         });
-        console.log("on-device output:", output);
-        // Xenova's output is an array of objects with 'generated_text'
-        return output[0]?.generated_text || '';
+
+        // Return generated text
+        return output[0]?.generated_text?.trim() || '';
     }
 
     /**

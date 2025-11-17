@@ -25,6 +25,10 @@
             <h2>On-Device</h2>
             <label>Model (transformers.js) <input id="deviceModel" value="Xenova/distilgpt2" /></label>
             <div id="deviceStatus">Not loaded</div>
+            <div id="deviceLoadingContainer" style="margin:8px 0; width:100%; max-width:300px;">
+                <div id="deviceLoadingBar" style="width:0%;height:8px;background:#4caf50;transition:width 0.2s;"></div>
+                <span id="deviceLoadingText" style="font-size:0.9em;"></span>
+            </div>
             <button id="loadDeviceModelBtn">Load Model</button>
         </div>
 

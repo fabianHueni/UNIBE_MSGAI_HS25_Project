@@ -95,24 +95,29 @@ export class RequestManager {
         const route = this._choose(job);
         const service = this._getInferenceService(route);
 
-        let text, latency;
+        let text, latencyMs;
         try {
             const {res, ms} = await measureAsync(() => service.infer(job.prompt));
             text = res;
-            latency = ms;
+            latencyMs = ms;
         } catch (err) {
             text = `__error__:${err.message}`;
-            latency = -1;
+            latencyMs = -1;
         }
 
         // evaluate result and store results
-        const evalRes = this.evaluator.evaluate(text, job.groundTruth);
-        this._record(route, latency, evalRes, job, text);
+        const evalRes = this.evaluator.evaluate(text, job.groundTruth, latencyMs);
+        this._record(route, latencyMs, evalRes, job, text);
 
         // logging the result
-        if (this.logger) this.logger({job, route, latency, evalRes, text});
+        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, text});
 
-        return {job, route, latency, evalRes, text};
+        // logging on console
+        console.log("inference output:", text);
+        console.log("inference latency:", latencyMs);
+        console.log("eval result:", evalRes);
+
+        return {job, route, latency: latencyMs, evalRes, text};
     }
 
 

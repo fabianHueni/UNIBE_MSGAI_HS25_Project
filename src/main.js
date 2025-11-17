@@ -90,11 +90,29 @@ document.getElementById('loadDeviceModelBtn').addEventListener('click', () => {
 async function loadDeviceModel() {
     deviceStatusEl.textContent = 'Loading...';
     document.getElementById('loadDeviceModelBtn').disabled = true;
+    const loadingBar = document.getElementById('deviceLoadingBar');
+    const loadingText = document.getElementById('deviceLoadingText');
+    loadingBar.style.width = '0%';
+    loadingText.textContent = '';
+    function updateModelLoadingUI(progress) {
+        if (progress && progress.loaded && progress.total) {
+            const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
+            loadingBar.style.width = percent + '%';
+            loadingText.textContent = `Loading: ${percent}% (${progress.loaded}/${progress.total} bytes)`;
+        } else if (progress && progress.status) {
+            loadingText.textContent = progress.status;
+        } else if (typeof progress === 'string') {
+            loadingText.textContent = progress;
+        }
+    }
     try {
-        await onDeviceInferenceService.load((s) => deviceStatusEl.textContent = s);
+        await onDeviceInferenceService.load(updateModelLoadingUI);
         deviceStatusEl.textContent = 'Model Ready';
+        loadingBar.style.width = '100%';
+        loadingText.textContent = 'Model loaded.';
     } catch (e) {
         deviceStatusEl.textContent = `Error: ${e.message}`;
+        loadingText.textContent = 'Error loading model.';
         document.getElementById('loadDeviceModelBtn').disabled = false;
     }
 }
