@@ -95,9 +95,11 @@ export class RequestManager {
         const route = this._choose(job);
         const service = this._getInferenceService(route);
 
+        const full_prompt = "Please answer the following question with True or False: " + job.prompt + "\nAnswer: "; // ensure string input
+
         let text, latencyMs;
         try {
-            const {res, ms} = await measureAsync(() => service.infer(job.prompt));
+            const {res, ms} = await measureAsync(() => service.infer(full_prompt));
             text = res;
             latencyMs = ms;
         } catch (err) {

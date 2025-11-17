@@ -1,5 +1,4 @@
 // CloudService: example OpenRouter integration. Replace endpoint/payload per provider.
-
 /**
  * Cloud inference service using a remote API from OpenRouter to access different models over one API.
  *
@@ -7,7 +6,7 @@
 export class CloudService {
     constructor({apiKey, model} = {}) {
         this.apiKey = apiKey;
-        this.model = model || 'gpt-4o-mini';
+        this.model = model;
     }
 
 
@@ -32,13 +31,15 @@ export class CloudService {
     async infer(prompt) {
         if (!this.apiKey) throw new Error('No API key set for CloudService');
 
+        // prepare payload with prompt
         const payload = {
             model: this.model,
+            max_tokens: 50,
             messages: [{role: 'user', content: prompt}]
         };
 
         // call the api
-        const resp = await fetch('https://api.openrouter.ai/v1/chat/completions', {
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -66,6 +67,13 @@ export class CloudService {
         } catch (e) {
             text = JSON.stringify(json).slice(0, 200);
         }
-        return text;
+
+        return {
+            answer: text,
+            stats: {
+                input_tokens: json.usage?.prompt_tokens || 0,
+                output_tokens: json.usage?.completion_tokens || 0
+            }
+        };
     }
 }

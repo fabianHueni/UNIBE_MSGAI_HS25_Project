@@ -42,7 +42,7 @@ export class JobScheduler {
             }
         } else if (patternName === 'every-ten-sec') {
             let i = 0;
-            const interval = 100; // ms
+            const interval = 10000; // ms
             while (this._dataset.length > 0 && this.running) {
                 const item = this._dataset.pop();
                 this._emit(item);

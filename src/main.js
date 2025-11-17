@@ -14,13 +14,13 @@ const deviceStatusEl = document.getElementById('deviceStatus');
 
 // instantiate services and components
 const onDeviceInferenceService = new OnDeviceService({modelName: document.getElementById('deviceModel').value});
-const cloudInferenceService = new CloudService({apiKey: '', model: document.getElementById('cloudModel').value});
+const cloudInferenceService = new CloudService({apiKey: document.getElementById('cloudApiKey').value, model: document.getElementById('cloudModel').value});
 const evaluator = new Evaluator();
 
 
 const requestManager = new RequestManager({
     deviceService: onDeviceInferenceService, cloudService: cloudInferenceService, evaluator, logger: evt => {
-        logTo(logEl, `${evt.job.id} -> ${evt.route} | latency=${evt.latency}ms | exact=${evt.evalRes.exact} | question="${evt.job.prompt.substring(0, 30)}..."`);
+        logTo(logEl, `${evt.route} | latency=${evt.latency}ms | exact=${evt.evalRes.exact} | question="${evt.job.prompt.substring(0, 30)}..."`);
         updateStats();
     }
 });
@@ -42,7 +42,7 @@ document.getElementById('deviceModel').addEventListener('change', (e) =>
 document.getElementById('cloudModel').addEventListener('change', (e) =>
     cloudInferenceService.updateConfig({model: e.target.value})
 );
-document.getElementById('apiKey').addEventListener('input', (e) =>
+document.getElementById('cloudApiKey').addEventListener('input', (e) =>
     cloudInferenceService.updateConfig({apiKey: e.target.value})
 );
 
@@ -90,6 +90,7 @@ document.getElementById('loadDeviceModelBtn').addEventListener('click', () => {
 async function loadDeviceModel() {
     deviceStatusEl.textContent = 'Loading...';
     document.getElementById('loadDeviceModelBtn').disabled = true;
+    document.getElementById('loadDeviceModelBtn').textContent = 'Loading Model...';
     const loadingBar = document.getElementById('deviceLoadingBar');
     const loadingText = document.getElementById('deviceLoadingText');
     loadingBar.style.width = '0%';

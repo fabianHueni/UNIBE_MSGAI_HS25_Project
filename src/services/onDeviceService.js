@@ -70,7 +70,6 @@ export class OnDeviceService {
             console.log("model not ready:" , this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
         }
-        prompt = "Please answer the following question: " + prompt + "\nAnswer: "; // ensure string input
         console.log("running inference on-device:\n", prompt);
 
         const output = await this._model(prompt, {
@@ -82,8 +81,10 @@ export class OnDeviceService {
             num_return_sequences: 1,
         });
 
-        // Return generated text
-        return output[0]?.generated_text?.trim() || '';
+        const text = output[0]?.generated_text?.trim() || '';
+
+        // todo calculate input and output tokens
+        return {answer: text, stats: {input_tokens: undefined, output_tokens: undefined}};
     }
 
     /**

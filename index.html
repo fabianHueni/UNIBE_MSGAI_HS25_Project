@@ -4,69 +4,82 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Browser LLM Evaluation</title>
-    <link rel="stylesheet" href="styles.css">
-    <!-- Xenova transformers.js module import (no global script) -->
-    <!-- Remove HuggingFace CDN, use ES module import in main.js -->
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-<main class="container">
-    <h1>Browser LLM Evaluation</h1>
+<body class="bg-gray-100 text-gray-900 min-h-screen">
+<main class="max-w-6xl mx-auto p-6">
+    <h1 class="text-3xl font-bold mb-6 text-center">Browser LLM Evaluation</h1>
 
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Cloud Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4">Cloud (OpenRouter)</h2>
+            <label class="block mb-4 text-sm font-medium">API Key
+                <input id="cloudApiKey" type="text" placeholder="Key..." class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </label>
+            <select id="cloudModel" class="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+            </select>
 
-    <section class="grid">
-        <div class="card">
-            <h2>Cloud (OpenRouter)</h2>
-            <label>API Key <input id="apiKey" type="password" placeholder="sk-..." /></label>
-            <label>Model <input id="cloudModel" value="gpt-4o-mini" /></label>
         </div>
 
+        <!-- On-Device Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4">On-Device</h2>
+            <label class="block mb-4 text-sm font-medium">Model (transformers.js)
+                <input id="deviceModel" value="Xenova/distilgpt2" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </label>
 
-        <div class="card">
-            <h2>On-Device</h2>
-            <label>Model (transformers.js) <input id="deviceModel" value="Xenova/distilgpt2" /></label>
-            <div id="deviceStatus">Not loaded</div>
-            <div id="deviceLoadingContainer" style="margin:8px 0; width:100%; max-width:300px;">
-                <div id="deviceLoadingBar" style="width:0%;height:8px;background:#4caf50;transition:width 0.2s;"></div>
-                <span id="deviceLoadingText" style="font-size:0.9em;"></span>
+            <div id="deviceStatus" class="text-gray-700 text-sm mb-2">Not loaded</div>
+
+            <button id="loadDeviceModelBtn" class="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">Load Model</button>
+
+            <div id="deviceLoadingContainer" class="w-full max-w-xs my-2">
+                <div id="deviceLoadingBar" class="h-2 bg-green-500 transition-all duration-200 w-0"></div>
+                <span id="deviceLoadingText" class="text-xs text-gray-600"></span>
             </div>
-            <button id="loadDeviceModelBtn">Load Model</button>
+
         </div>
 
+        <!-- Request Pattern Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
+            <h2 class="text-xl font-semibold mb-4">Request Pattern</h2>
 
-        <div class="card">
-            <h2>Request Pattern</h2>
-            <select id="patternSelect">
+            <select id="patternSelect" class="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
                 <option value="once-per-sec">1 request / sec</option>
                 <option value="every-ten-sec">Every 10 sec 1 request</option>
                 <option disabled value="batch-10-every-5s">(not implemented) Batch: 10 every 5s</option>
                 <option disabled value="burst">(not implemented) Burst: 50 then idle</option>
             </select>
-            <label>Route strategy
-                <select id="routeStrategy">
+
+            <label class="block mb-4 text-sm font-medium">Route strategy
+                <select id="routeStrategy" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="always_cloud">Always cloud</option>
                     <option value="roundrobin">Round Robin</option>
                     <option value="probabilistic">Probabilistic (p to cloud)</option>
-                    <option value="always_cloud">Always cloud</option>
                     <option value="always_device">Always device</option>
                 </select>
             </label>
-            <label>Cloud probability (for probabilistic) <input id="cloudProb" type="number" min="0" max="1" step="0.1" value="0.5"/></label>
-            <div class="buttons">
-                <button id="startBtn">Start</button>
-                <button id="stopBtn" disabled>Stop</button>
+
+            <label class="block mb-4 text-sm font-medium">Cloud probability (for probabilistic)
+                <input id="cloudProb" type="number" min="0" max="1" step="0.1" value="0.5" class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none" />
+            </label>
+
+            <div class="flex gap-3 mt-4">
+                <button id="startBtn" class="flex-1 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition">Start</button>
+                <button id="stopBtn" disabled class="flex-1 bg-gray-400 text-white py-2 rounded-lg">Stop</button>
             </div>
         </div>
 
-        <div class="card wide">
-            <h2>Live Log & Results</h2>
-            <div id="log" class="log"></div>
-            <div id="stats"></div>
-            <button id="downloadStats">Download Statistics</button>
+        <!-- Log Card -->
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 md:col-span-3">
+            <h2 class="text-xl font-semibold mb-4">Live Log & Results</h2>
+            <div id="log" class="h-64 overflow-auto bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm"></div>
+            <div id="stats" class="mt-4 text-sm text-gray-800"></div>
+            <button id="downloadStats" class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">Download Statistics</button>
         </div>
     </section>
-
-
 </main>
-
 
 <script type="module" src="./src/main.js"></script>
 </body>
