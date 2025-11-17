@@ -25,10 +25,12 @@ export class OnDeviceService {
      * @returns {Promise<void>}
      */
     async load(progressCb) {
+        console.log("download model:", this.modelName);
         // Xenova's pipeline API (ES module)
         this._model = await pipeline('text-generation', this.modelName, {
             progress_callback: progressCb
         });
+        console.log("model loaded");
         this._ready = true;
     }
 
@@ -51,12 +53,25 @@ export class OnDeviceService {
      * @returns {Promise<string>}
      */
     async infer(prompt, {maxNewTokens = 50} = {}) {
+        console.log("run on device inference");
         if (!this._ready || !this._model) {
+            console.log("model not ready:" , this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
         }
+
+        prompt = "Please answer the following question: " + prompt + "\nAnswer: "; // ensure string input
+        console.log("infer on-device:", prompt);
+
         const output = await this._model(prompt, {
-            max_new_tokens: maxNewTokens
+            max_new_tokens: maxNewTokens,
+            temperature: 2,
+            repetition_penalty: 1.5,
+            no_repeat_ngram_size: 2,
+            num_beams: 1,
+            num_return_sequences: 2,
+
         });
+        console.log("on-device output:", output);
         // Xenova's output is an array of objects with 'generated_text'
         return output[0]?.generated_text || '';
     }
