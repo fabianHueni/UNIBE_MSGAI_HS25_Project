@@ -36,7 +36,7 @@ export class JobScheduler {
             let i = 0;
             while (this._dataset.length > 0 && this.running) {
                 console.log(this._dataset.length)
-                const item = this._dataset.pop();
+                const item = this._dataset.shift();
                 this._emit(item);
                 await sleep(1000);
             }
@@ -44,7 +44,7 @@ export class JobScheduler {
             let i = 0;
             const interval = 10000; // ms
             while (this._dataset.length > 0 && this.running) {
-                const item = this._dataset.pop();
+                const item = this._dataset.shift();
                 this._emit(item);
                 await sleep(interval);
             }
@@ -101,6 +101,7 @@ export class JobScheduler {
                     const [question, answer, context] = line.split(',');
                     return {prompt: question, groundTruth: answer};
                 });
+                console.log(`✅ Dataset '${name}' loaded with ${this._dataset.length} items.`);
             })
             .catch(error => {
                 console.error(error);

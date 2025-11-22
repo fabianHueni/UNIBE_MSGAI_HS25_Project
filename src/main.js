@@ -14,7 +14,10 @@ const deviceStatusEl = document.getElementById('deviceStatus');
 
 // instantiate services and components
 const onDeviceInferenceService = new OnDeviceService({modelName: document.getElementById('deviceModel').value});
-const cloudInferenceService = new CloudService({apiKey: document.getElementById('cloudApiKey').value, model: document.getElementById('cloudModel').value});
+const cloudInferenceService = new CloudService({
+    apiKey: document.getElementById('cloudApiKey').value,
+    model: document.getElementById('cloudModel').value
+});
 const evaluator = new Evaluator();
 
 
@@ -95,7 +98,9 @@ async function loadDeviceModel() {
     const loadingText = document.getElementById('deviceLoadingText');
     loadingBar.style.width = '0%';
     loadingText.textContent = '';
+
     function updateModelLoadingUI(progress) {
+        console.log('Model loading progress:', progress);
         if (progress && progress.loaded && progress.total) {
             const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
             loadingBar.style.width = percent + '%';
@@ -106,15 +111,18 @@ async function loadDeviceModel() {
             loadingText.textContent = progress;
         }
     }
+
     try {
         await onDeviceInferenceService.load(updateModelLoadingUI);
         deviceStatusEl.textContent = 'Model Ready';
         loadingBar.style.width = '100%';
         loadingText.textContent = 'Model loaded.';
     } catch (e) {
+        console.log('e', e);
         deviceStatusEl.textContent = `Error: ${e.message}`;
         loadingText.textContent = 'Error loading model.';
         document.getElementById('loadDeviceModelBtn').disabled = false;
+        document.getElementById('loadDeviceModelBtn').textContent = 'Load Model';
     }
 }
 

@@ -1,6 +1,6 @@
 // OnDeviceService: uses Xenova's transformers.js to run a small causal LM in browser
 // Uses ES module import for Xenova's transformers.js
-import { pipeline } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.7.0/dist/transformers.min.js';
+import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.0';
 
 
 /**
@@ -18,13 +18,12 @@ export class OnDeviceService {
     /**
      * Load the model into memory to be ready for inference.
      * Download the model if not already cached. Cache the model for future use.
-     * TODO Download models from a model hub like HuggingFace using transformers.js
      *
      * @param progressCb
      * @returns {Promise<void>}
      */
     async load(progressCb) {
-        console.log("Downloading model:", this.modelName);
+        console.log(`⬇️ Download Model '${this.modelName}'...`);
         // Provide a default progress callback if none is given
         const defaultProgressCb = (progress) => {
             if (progress && typeof progress === 'object') {
@@ -41,9 +40,10 @@ export class OnDeviceService {
         };
         // Xenova's pipeline API (ES module)
         this._model = await pipeline('text-generation', this.modelName, {
-            progress_callback: progressCb || defaultProgressCb
+            progress_callback: progressCb || defaultProgressCb,
+            dtype: "fp32"
         });
-        console.log("Model loaded and ready.");
+        console.log(`✅ Model '${this.modelName}' loaded and ready.`);
         this._ready = true;
     }
 
@@ -70,7 +70,7 @@ export class OnDeviceService {
             console.log("model not ready:" , this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
         }
-        console.log("running inference on-device:\n", prompt);
+        console.log("🔄 Running inference on-device for prompt:\n", prompt);
 
         const output = await this._model(prompt, {
             max_new_tokens: maxNewTokens,
@@ -80,6 +80,8 @@ export class OnDeviceService {
             num_beams: 1,
             num_return_sequences: 1,
         });
+
+        console.log("✅ Completed inference on-device for prompt:\n", prompt);
 
         const text = output[0]?.generated_text?.trim() || '';
 
