@@ -14,7 +14,6 @@ export class Evaluator{
  */
 evaluate(pred, truth, latencyMs) {
     const total_tokens = this._countTokens(pred);
-    console.log("pred: " + pred.answer + '; truth: ' + truth + "; Latency: " + latencyMs);
     return {
             exactMatch: this._exactMatch(pred.answer, truth),
             f1WordLevel: this._f1WordLevel(pred.answer, truth),

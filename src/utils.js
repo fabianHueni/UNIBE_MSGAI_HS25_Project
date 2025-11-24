@@ -22,10 +22,16 @@ export function measureAsync(fn) {
  * @param el - HTML element to log to
  * @param text - Text to log
  */
-export function logTo(el, text) {
+export function logTo(el, evt) {
     if (!el) return;
-    const p = document.createElement('div');
-    p.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
-    el.appendChild(p);
+    const row = document.createElement('tr');
+    row.innerHTML = `
+        <td>${new Date().toLocaleTimeString()}</td>
+        <td>${evt.route}</td>
+        <td>${evt.latency.toFixed(2)}ms</td>
+        <td>${evt.job.prompt.substring(0, 30)}...</td>
+        <td>${evt.evalRes.exactMatch}</td>
+    `;
+    el.appendChild(row);
     el.scrollTop = el.scrollHeight;
 }

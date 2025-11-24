@@ -35,7 +35,6 @@ export class JobScheduler {
         if (patternName === 'once-per-sec') {
             let i = 0;
             while (this._dataset.length > 0 && this.running) {
-                console.log(this._dataset.length)
                 const item = this._dataset.shift();
                 this._emit(item);
                 await sleep(1000);

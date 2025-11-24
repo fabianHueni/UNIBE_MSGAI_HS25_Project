@@ -67,7 +67,7 @@ export class RequestManager {
          * Statistics about routing and evaluations of this job run
          * @type {{cloud: number, evaluations: *[], count: number, device: number, totalLatencyMs: number}}
          */
-        this.stats = {count: 0, cloud: 0, device: 0, totalLatencyMs: 0, evaluations: []};
+        this.stats = {count: 0, cloud: 0, device: 0, totalLatencyMs: 0, results: []};
     }
 
 
@@ -115,9 +115,10 @@ export class RequestManager {
         if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, text: response});
 
         // logging on console
-        console.log("inference output:", response);
-        console.log("inference latency:", latencyMs);
-        console.log("eval result:", evalRes);
+        console.log("🎯 Models Answer: " + response.answer +
+            '; \nGround Truth: ' + job.groundTruth +
+            "; \nLatency: " + latencyMs);
+
 
         return {job, route, latency: latencyMs, evalRes, text: response};
     }
@@ -170,6 +171,6 @@ export class RequestManager {
         this.stats.count++;
         if (route === 'cloud') this.stats.cloud++; else this.stats.device++;
         if (latency > 0) this.stats.totalLatencyMs += latency;
-        this.stats.evaluations.push({jobId: job.id, route, latency, evalRes, text});
+        this.stats.results.push({job: job, route, latency, evalRes, text});
     }
 }

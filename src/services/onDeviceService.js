@@ -41,7 +41,8 @@ export class OnDeviceService {
         // Xenova's pipeline API (ES module)
         this._model = await pipeline('text-generation', this.modelName, {
             progress_callback: progressCb || defaultProgressCb,
-            dtype: "fp32"
+            device: 'webgpu', // run on WebGPU if available
+            // dtype: "fp32"
         });
         console.log(`✅ Model '${this.modelName}' loaded and ready.`);
         this._ready = true;

@@ -71,10 +71,10 @@
             <label class="block mb-4 text-sm font-medium">Route strategy
                 <select id="routeStrategy"
                         class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="always_device">Always device</option>
                     <option value="always_cloud">Always cloud</option>
                     <option value="roundrobin">Round Robin</option>
                     <option value="probabilistic">Probabilistic (p to cloud)</option>
-                    <option value="always_device">Always device</option>
                 </select>
             </label>
 
@@ -94,12 +94,32 @@
         <!-- Log Card -->
         <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 md:col-span-3">
             <h2 class="text-xl font-semibold mb-4">Live Log & Results</h2>
-            <div id="log" class="h-64 overflow-auto bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm"></div>
+            <div class="block w-full h-64 overflow-scroll">
+                <table id="log" class="w-full h-64 overflow-scroll bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
+                    <thead>
+                    <tr>
+                        <th class="text-left">Timestamp</th>
+                        <th class="text-left">Route</th>
+                        <th class="text-left">Latency (ms)</th>
+                        <th class="text-left">Question</th>
+                        <th class="text-left">Correct</th>
+                    </tr>
+                    </thead>
+                    <tbody id="log-table-body"></tbody>
+                </table>
+            </div>
+
             <div id="stats" class="mt-4 text-sm text-gray-800"></div>
-            <button id="downloadStats"
-                    class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">Download
-                Statistics
+            <div class="flex flex-col md:flex-row gap-4 mt-4">
+                <button id="downloadStatsJson"
+                        class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
+                    Download Statistics as JSON
+                </button><button id="downloadStatsCsv"
+                                 class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
+                Download Statistics as CSV
             </button>
+            </div>
+
         </div>
     </section>
 </main>

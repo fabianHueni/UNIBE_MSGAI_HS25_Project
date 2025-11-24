@@ -7,7 +7,7 @@ import {logTo} from './utils.js';
 
 
 // get references to html elements
-const logEl = document.getElementById('log');
+const logEl = document.getElementById('log-table-body');
 const statsEl = document.getElementById('stats');
 const deviceStatusEl = document.getElementById('deviceStatus');
 
@@ -23,7 +23,7 @@ const evaluator = new Evaluator();
 
 const requestManager = new RequestManager({
     deviceService: onDeviceInferenceService, cloudService: cloudInferenceService, evaluator, logger: evt => {
-        logTo(logEl, `${evt.route} | latency=${evt.latency}ms | exact=${evt.evalRes.exact} | question="${evt.job.prompt.substring(0, 30)}..."`);
+        logTo(logEl, evt);
         updateStats();
     }
 });
@@ -82,8 +82,11 @@ document.getElementById('stopBtn').addEventListener('click', () => {
     document.getElementById('stopBtn').disabled = true;
 });
 
-document.getElementById('downloadStats').addEventListener('click', () => {
-    downloadStats();
+document.getElementById('downloadStatsJson').addEventListener('click', () => {
+    downloadStatsAsJson();
+});
+document.getElementById('downloadStatsCsv').addEventListener('click', () => {
+    downloadStatsAsCSV();
 });
 document.getElementById('loadDeviceModelBtn').addEventListener('click', () => {
     loadDeviceModel();
@@ -118,7 +121,7 @@ async function loadDeviceModel() {
         loadingBar.style.width = '100%';
         loadingText.textContent = 'Model loaded.';
     } catch (e) {
-        console.log('e', e);
+        console.error('❌ Error loading on-device model:', e);
         deviceStatusEl.textContent = `Error: ${e.message}`;
         loadingText.textContent = 'Error loading model.';
         document.getElementById('loadDeviceModelBtn').disabled = false;
@@ -126,17 +129,55 @@ async function loadDeviceModel() {
     }
 }
 
-function downloadStats() {
+function downloadStatsAsJson() {
     const s = requestManager.stats;
     // add average latency to stats for device and cloud
     s.avgLatencyMs = s.count ? (s.totalLatencyMs / s.count) : 0;
-    s.avgDeviceLatencyMs = s.device ? (s.evaluations.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device) : 0;
-    s.avgCloudLatencyMs = s.cloud ? (s.evaluations.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud) : 0;
+    s.avgDeviceLatencyMs = s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device) : 0;
+    s.avgCloudLatencyMs = s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud) : 0;
 
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(s, null, 2));
     const dlAnchorElem = document.createElement('a');
     dlAnchorElem.setAttribute("href", dataStr);
     dlAnchorElem.setAttribute("download", "stats.json");
+    dlAnchorElem.click();
+}
+
+function downloadStatsAsCSV() {
+    const s = requestManager.stats;
+
+    const flattened_evals = s.results.map(evaluation => ({
+            route: evaluation.route,
+            latency: evaluation.latency,
+            prompt: evaluation.job.prompt,
+
+            // job details
+            groundTruth: evaluation.job.groundTruth,
+            answer: evaluation.text.answer,
+
+            // evaluation results
+            exactMatch: evaluation.evalRes.exactMatch,
+            f1: evaluation.evalRes.f1WordLevel,
+            tokensPerSecond: evaluation.evalRes.tokensPerSecond,
+            totalTokens: evaluation.evalRes.totalTokens,
+
+            // further stats
+            input_tokens: evaluation.text.stats.input_tokens,
+            output_tokens: evaluation.text.stats.output_tokens,
+        })
+    );
+
+    // Convert stats to CSV format
+    const headers = Object.keys(flattened_evals[0] || {}).join(',');
+    const rows = flattened_evals.map(evaluation =>
+        Object.values(evaluation).map(value => `"${value}"`).join(',')
+    );
+    const csvContent = [headers, ...rows].join('\n');
+
+    const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
+    const dlAnchorElem = document.createElement('a');
+    dlAnchorElem.setAttribute("href", dataStr);
+    dlAnchorElem.setAttribute("download", "stats.csv");
     dlAnchorElem.click();
 }
 
@@ -153,21 +194,26 @@ function updateStats() {
                 <pre>
 Processed: ${s.count}
 Avg latency (ms): ${s.count ? (s.totalLatencyMs / s.count).toFixed(1) : 0}
-Recent evaluations: ${Math.min(10, s.evaluations.length)}
+Avg correct: ${s.count ? (s.results.reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.count * 100).toFixed(1) : 0}%
+Recent evaluations: ${Math.min(10, s.results.length)}
                 </pre>
             </div>
             <div>
                 <h3>Cloud Stats</h3>
                 <pre>
 Requests: ${s.cloud}
-Avg latency (ms): ${s.cloud ? (s.evaluations.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+Avg latency (ms): ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.cloud * 100).toFixed(1) : 0}%
+               
                 </pre>
             </div>
             <div>
                 <h3>On-Device Stats</h3>
                 <pre>
 Requests: ${s.device}
-Avg latency (ms): ${s.cloud ? (s.evaluations.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+Avg latency (ms): ${s.cloud ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
+Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.cloud * 100).toFixed(1) : 0}%
+
                 </pre>
             </div>
         </div>`;
