@@ -1,6 +1,6 @@
 // OnDeviceService: uses Xenova's transformers.js to run a small causal LM in browser
 // Uses ES module import for Xenova's transformers.js
-import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.0';
+import {pipeline} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.0';
 
 
 /**
@@ -42,7 +42,7 @@ export class OnDeviceService {
         this._model = await pipeline('text-generation', this.modelName, {
             progress_callback: progressCb || defaultProgressCb,
             device: 'webgpu', // run on WebGPU if available
-            // dtype: "fp32"
+            dtype: "fp32"
         });
         console.log(`✅ Model '${this.modelName}' loaded and ready.`);
         this._ready = true;
@@ -68,23 +68,25 @@ export class OnDeviceService {
      */
     async infer(prompt, {maxNewTokens = 100} = {}) {
         if (!this._ready || !this._model) {
-            console.log("model not ready:" , this._ready, this._model);
+            console.log("model not ready:", this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
         }
         console.log("🔄 Running inference on-device for prompt:\n", prompt);
 
-        const output = await this._model(prompt, {
+        const messages = [
+            { role: "user", content: prompt },
+        ];
+
+        const output = await this._model(messages, {
             max_new_tokens: maxNewTokens,
-            temperature: 1.5,
-            repetition_penalty: 1.5,
-            no_repeat_ngram_size: 2,
-            num_beams: 1,
-            num_return_sequences: 1,
+            temperature: 0.2,
         });
 
         console.log("✅ Completed inference on-device for prompt:\n", prompt);
 
-        const text = output[0]?.generated_text?.trim() || '';
+        // take last generated text which corresponds to the model's answer
+        const generated_output = output[0]?.generated_text;
+        const text = generated_output[generated_output.length - 1]?.content.trim() || '';
 
         // todo calculate input and output tokens
         return {answer: text, stats: {input_tokens: undefined, output_tokens: undefined}};

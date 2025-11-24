@@ -211,8 +211,8 @@ Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, 
                 <h3>On-Device Stats</h3>
                 <pre>
 Requests: ${s.device}
-Avg latency (ms): ${s.cloud ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
-Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.cloud * 100).toFixed(1) : 0}%
+Avg latency (ms): ${s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device).toFixed(1) : 0}
+Avg correct: ${s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.device * 100).toFixed(1) : 0}%
 
                 </pre>
             </div>

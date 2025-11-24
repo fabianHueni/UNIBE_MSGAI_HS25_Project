@@ -112,7 +112,7 @@ export class RequestManager {
         this._record(route, latencyMs, evalRes, job, response);
 
         // logging the result
-        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, text: response});
+        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: response});
 
         // logging on console
         console.log("🎯 Models Answer: " + response.answer +
