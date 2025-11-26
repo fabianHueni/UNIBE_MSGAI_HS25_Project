@@ -9,6 +9,13 @@
 <body class="bg-gray-100 text-gray-900 min-h-screen">
 <main class="max-w-6xl mx-auto p-6">
     <h1 class="text-3xl font-bold mb-6 text-center">Browser LLM Evaluation</h1>
+    <p class="mb-6 text-gray-700 text-center">
+        This project explores how in-browser LLM inference behafes compared to cloud-based inference in terms of latency.
+        The goal is to modle different request incoming patterns and routing strategies between cloud and on-device models.
+        For the prompts and evaluation of the accuracy the BooIQ dataset is used.
+        The project is currently under development and does not aim to provide accurate LLM responses, but rather to measure performance differences.
+        To run the cloud based inference, you need to bring your own OpenRouter API key.
+    </p>
 
     <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- Cloud Card -->
@@ -31,7 +38,6 @@
             </label>
 
 
-
         </div>
 
         <!-- On-Device Card -->
@@ -44,8 +50,11 @@
                     <option value="onnx-community/gemma-3-270m-it-ONNX">gemma-3-270m-it-ONNX</option>
                     <option value="onnx-community/gemma-3-1b-it-ONNX">gemma-3-1b-it-ONNX</option>
                     <option value="onnx-community/Llama-3.2-1B-Instruct-ONNX">Llama-3.2-1B-Instruct-ONNX</option>
-                    <option value="onnx-community/Llama-3.2-3B-Instruct-ONNX">Llama-3.2-3B-Instruct-ONNX</option>
-                    <option disabled value="onnx-community/gemma-3n-E2B-it-ONNX">gemma-3n-E2B-it-ONNX (not working)</option>
+                    <option disabled value="onnx-community/Llama-3.2-3B-Instruct-ONNX">Llama-3.2-3B-Instruct-ONNX (not
+                        working)
+                    </option>
+                    <option disabled value="onnx-community/gemma-3n-E2B-it-ONNX">gemma-3n-E2B-it-ONNX (not working)
+                    </option>
                 </select>
             </label>
 
@@ -64,15 +73,17 @@
 
         <!-- Request Pattern Card -->
         <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
-            <h2 class="text-xl font-semibold mb-4">Request Pattern</h2>
+            <h2 class="text-xl font-semibold mb-4">Request Pattern & Routing</h2>
 
-            <select id="patternSelect"
-                    class="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                <option value="once-per-sec">1 request / sec</option>
-                <option value="every-ten-sec">Every 10 sec 1 request</option>
-                <option disabled value="batch-10-every-5s">(not implemented) Batch: 10 every 5s</option>
-                <option disabled value="burst">(not implemented) Burst: 50 then idle</option>
-            </select>
+            <label class="block mb-4 text-sm font-medium">Load Pattern
+                <select id="patternSelect"
+                        class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                    <option value="once-per-sec">1 request / sec</option>
+                    <option value="every-ten-sec">Every 10 sec 1 request</option>
+                    <option disabled value="batch-10-every-5s">(not implemented) Batch: 10 every 5s</option>
+                    <option disabled value="burst">(not implemented) Burst: 50 then idle</option>
+                </select>
+            </label>
 
             <label class="block mb-4 text-sm font-medium">Route strategy
                 <select id="routeStrategy"
@@ -101,7 +112,8 @@
         <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 md:col-span-3">
             <h2 class="text-xl font-semibold mb-4">Live Log & Results</h2>
             <div class="block w-full h-64 overflow-scroll">
-                <table id="log" class="w-full h-64 overflow-scroll bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
+                <table id="log"
+                       class="w-full h-64 overflow-scroll bg-gray-50 p-3 rounded-lg border border-gray-200 text-sm">
                     <thead>
                     <tr>
                         <th class="text-left">Timestamp</th>
@@ -121,10 +133,11 @@
                 <button id="downloadStatsJson"
                         class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
                     Download Statistics as JSON
-                </button><button id="downloadStatsCsv"
-                                 class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
-                Download Statistics as CSV
-            </button>
+                </button>
+                <button id="downloadStatsCsv"
+                        class="mt-4 w-full bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition">
+                    Download Statistics as CSV
+                </button>
             </div>
 
         </div>
