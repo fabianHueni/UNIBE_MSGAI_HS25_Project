@@ -95,7 +95,7 @@ export class RequestManager {
         const route = this._choose(job);
         const service = this._getInferenceService(route);
 
-        const full_prompt = "Please answer the following question either with true or false and only with true or false and no explaination: " + job.prompt + "\nAnswer: "; // ensure string input
+        const full_prompt = job.prompt; // ensure string input
 
         let response, latencyMs; // response is object with .answer and .stats
         try {

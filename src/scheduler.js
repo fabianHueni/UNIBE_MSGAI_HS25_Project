@@ -98,7 +98,8 @@ export class JobScheduler {
             .then(data => {
                 this._dataset = data.split('\n').slice(1).map(line => {
                     const [question, answer, context] = line.split(',');
-                    return {prompt: question, groundTruth: answer};
+                    const full_prompt = `Passage: ${context} \n Question: ${question} \n Answer only with one word "true" or "false":`;
+                    return {prompt: full_prompt, groundTruth: answer};
                 });
                 console.log(`✅ Dataset '${name}' loaded with ${this._dataset.length} items.`);
             })
