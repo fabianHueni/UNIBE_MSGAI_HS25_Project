@@ -11,6 +11,7 @@ export class JobScheduler {
         this._dataset = null;
         this._onJob = null; // callback
         this._datasetName = datasetName
+        this._interArrivalTimeLambda = 2; // rate parameter for interarrival time generation in seconds
 
         this._loadDataset(this._datasetName);
     }
@@ -41,18 +42,18 @@ export class JobScheduler {
             }
         } else if (patternName === 'every-ten-sec') {
             let i = 0;
-            const interval = 10000; // ms
             while (this._dataset.length > 0 && this.running) {
                 const item = this._dataset.shift();
                 this._emit(item);
-                await sleep(interval);
+                await sleep(10000);
             }
-        } else if (patternName === 'batch-10-every-5s') {
+        } else if (patternName === 'exponential-arrival') {
             let i = 0;
-            while (this.running) {
-                // TODO implement batch processing!
-                for (let j = 0; j < 10 && this.running; j++) this._emit(i++);
-                await sleep(5000);
+            while (this._dataset.length > 0 && this.running) {
+                const item = this._dataset.shift();
+                this._emit(item);
+                const timeToNextArrival = this._generateInterarrivalTime(this._interArrivalTimeLambda);
+                await sleep(timeToNextArrival);
             }
         }
     }
@@ -105,5 +106,18 @@ export class JobScheduler {
             .catch(error => {
                 console.error(error);
             });
+    }
+
+
+    /**
+     * Generate interarrival time based on exponential distribution
+     *
+     * @param lambda - rate parameter (requests per second)
+     * @returns {number} - interarrival time in milliseconds
+     * @private
+     */
+    _generateInterarrivalTime(lambda) {
+        const u = Math.random(); // uniform random number between 0 and 1
+        return -Math.log(u) / lambda * 1000; // convert to milliseconds
     }
 }
