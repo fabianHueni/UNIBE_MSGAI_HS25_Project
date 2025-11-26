@@ -92,6 +92,13 @@ document.getElementById('loadDeviceModelBtn').addEventListener('click', () => {
     loadDeviceModel();
 });
 
+document.getElementById('interArrivalTimeLambda').addEventListener('input', (event) => {
+    const newValue = parseFloat(event.target.value);
+    if (!isNaN(newValue) && newValue > 0) {
+        scheduler._interArrivalTimeLambda = newValue;
+    }
+});
+
 
 async function loadDeviceModel() {
     deviceStatusEl.textContent = 'Loading...';
