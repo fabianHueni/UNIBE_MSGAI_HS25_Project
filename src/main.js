@@ -107,7 +107,7 @@ async function loadDeviceModel() {
         if (progress && progress.loaded && progress.total) {
             const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
             loadingBar.style.width = percent + '%';
-            loadingText.textContent = `Loading: ${percent}% (${progress.loaded}/${progress.total} bytes)`;
+            loadingText.textContent = `Loading: ${percent}% (${(progress.loaded / (1024 ** 3)).toFixed(2)} GB / ${(progress.total / (1024 ** 3)).toFixed(2)} GB)`;
         } else if (progress && progress.status) {
             loadingText.textContent = progress.status;
         } else if (typeof progress === 'string') {

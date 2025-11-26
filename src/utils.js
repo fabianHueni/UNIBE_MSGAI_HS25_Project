@@ -30,7 +30,7 @@ export function logTo(el, evt) {
         <td>${evt.route}</td>
         <td>${evt.latency.toFixed(2)}ms</td>
         <td title="${evt.job.prompt}">${evt.job.prompt.substring(0, 30)}...</td>
-        <td title="${evt.response.answer}">${evt.response.answer.substring(0, 30)}...</td>
+        <td title="${evt.response.answer}">${evt.response.answer.substring(0, 30)}</td>
         <td>${evt.evalRes.exactMatch}</td>
     `;
     el.appendChild(row);
