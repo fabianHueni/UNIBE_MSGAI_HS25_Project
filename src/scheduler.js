@@ -24,38 +24,52 @@ export class JobScheduler {
 
     /**
      * Start emitting jobs based on the selected pattern
-     * TODO: Implement different patterns to simulate
-     * TODO: Run different datasets instead of just simple prompts
-     * @param patternName
-     * @returns {Promise<void>}
+     * @param {string} patternName - The pattern to use
+     * @param {number} maxJobs - Maximum number of jobs to emit (defaults to Infinity)
+     * @returns {Promise<number>} - Number of jobs emitted
      */
-    async startPattern(patternName) {
+    async startPattern(patternName, maxJobs = Infinity) {
         this.running = true;
+        let jobsEmitted = 0;
 
-        // once per second until user stopp evaluation
+        if (maxJobs !== Infinity) {
+            console.log(`🚀 Starting limited run: ${maxJobs} jobs with pattern '${patternName}'`);
+        }
+
         if (patternName === 'once-per-sec') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
-                const item = this._dataset.shift(); //shift instead of pop for FIFO
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
+                const item = this._dataset.shift();
                 this._emit(item);
-                await sleep(1000);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    await sleep(1000);
+                }
             }
         } else if (patternName === 'every-ten-sec') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
                 const item = this._dataset.shift();
                 this._emit(item);
-                await sleep(10000);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    await sleep(10000);
+                }
             }
         } else if (patternName === 'exponential-arrival') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
                 const item = this._dataset.shift();
                 this._emit(item);
-                const timeToNextArrival = this._generateInterarrivalTime(this._interArrivalTimeLambda);
-                await sleep(timeToNextArrival);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    const timeToNextArrival = this._generateInterarrivalTime(this._interArrivalTimeLambda);
+                    await sleep(timeToNextArrival);
+                }
             }
         }
+
+        if (maxJobs !== Infinity) {
+            console.log(`✅ Limited run complete: ${jobsEmitted} jobs emitted.`);
+        }
+        return jobsEmitted;
     }
 
 
@@ -64,6 +78,27 @@ export class JobScheduler {
      */
     stop() {
         this.running = false;
+    }
+
+    /**
+     * Reload the dataset (useful for running multiple experiments)
+     */
+    async reloadDataset() {
+        return new Promise((resolve, reject) => {
+            this._loadDataset(this._datasetName);
+            // Wait a bit for the fetch to complete
+            const checkLoaded = setInterval(() => {
+                if (this._dataset && this._dataset.length > 0) {
+                    clearInterval(checkLoaded);
+                    resolve();
+                }
+            }, 100);
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkLoaded);
+                reject(new Error('Dataset loading timeout'));
+            }, 10000);
+        });
     }
 
 
