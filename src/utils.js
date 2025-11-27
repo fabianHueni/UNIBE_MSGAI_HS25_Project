@@ -20,7 +20,7 @@ export function measureAsync(fn) {
  * Log text to a given HTML element with timestamp to show the log in the UI
  *
  * @param el - HTML element to log to
- * @param text - Text to log
+ * @param evt - Event object with job, route, latency, response, and timing metrics
  */
 export function logTo(el, evt) {
     if (!el) return;
@@ -28,7 +28,9 @@ export function logTo(el, evt) {
     row.innerHTML = `
         <td>${new Date().toLocaleTimeString()}</td>
         <td>${evt.route}</td>
-        <td>${evt.latency.toFixed(2)}ms</td>
+        <td>${evt.totalLatency?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>
+        <td>${evt.queueingTime?.toFixed(2) || 0}ms</td>
+        <td>${evt.inferenceTime?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>
         <td title="${evt.job.prompt}">${evt.job.prompt.substring(0, 30)}...</td>
         <td title="${evt.response.answer}">${evt.response.answer.substring(0, 30)}</td>
         <td>${evt.evalRes.exactMatch}</td>

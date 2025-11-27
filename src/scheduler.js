@@ -36,7 +36,7 @@ export class JobScheduler {
         if (patternName === 'once-per-sec') {
             let i = 0;
             while (this._dataset.length > 0 && this.running) {
-                const item = this._dataset.shift();
+                const item = this._dataset.shift(); //shift instead of pop for FIFO
                 this._emit(item);
                 await sleep(1000);
             }
@@ -75,7 +75,15 @@ export class JobScheduler {
      */
     _emit(item) {
         if (this._onJob) {
-            const job = {prompt: item.prompt, groundTruth: item.groundTruth};
+            const job = {
+                prompt: item.prompt, 
+                groundTruth: item.groundTruth,
+                timestamps: {
+                    jobStart: performance.now(),
+                    inferenceStart: null,
+                    inferenceEnd: null
+                }
+            };
             this._onJob(job);
         }
     }

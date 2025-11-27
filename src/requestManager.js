@@ -99,28 +99,42 @@ export class RequestManager {
 
         let response, latencyMs; // response is object with .answer and .stats
         try {
+            // Mark inference start
+            job.timestamps.inferenceStart = performance.now(); //TODO: take this timestamp in the service.infer method
+            
             const {res, ms} = await measureAsync(() => service.infer(full_prompt));
             response = res;
             latencyMs = ms;
+            
+            // Mark inference end
+            job.timestamps.inferenceEnd = performance.now();
         } catch (err) {
             response = `__error__:${err.message}`;
             latencyMs = -1;
+            job.timestamps.inferenceEnd = performance.now();
         }
+
+        // Calculate timing metrics
+        const queueingTime = job.timestamps.inferenceStart - job.timestamps.jobStart;
+        const inferenceTime = job.timestamps.inferenceEnd - job.timestamps.inferenceStart;
+        const totalLatency = job.timestamps.inferenceEnd - job.timestamps.jobStart;
 
         // evaluate result and store results
         const evalRes = this.evaluator.evaluate(response, job.groundTruth, latencyMs);
-        this._record(route, latencyMs, evalRes, job, response);
+        this._record(route, latencyMs, evalRes, job, response, {queueingTime, inferenceTime, totalLatency});
 
         // logging the result
-        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: response});
+        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: response, queueingTime, inferenceTime, totalLatency});
 
         // logging on console
         console.log("🎯 Models Answer: " + response.answer +
             '; \nGround Truth: ' + job.groundTruth +
-            "; \nLatency: " + latencyMs);
+            "; \nInference Time: " + inferenceTime.toFixed(2) + "ms" +
+            "; \nQueueing Time: " + queueingTime.toFixed(2) + "ms" +
+            "; \nTotal Latency: " + totalLatency.toFixed(2) + "ms");
 
 
-        return {job, route, latency: latencyMs, evalRes, text: response};
+        return {job, route, latency: latencyMs, evalRes, text: response, queueingTime, inferenceTime, totalLatency};
     }
 
 
@@ -165,12 +179,23 @@ export class RequestManager {
      * @param evalRes - Evaluation result object
      * @param job - The job object
      * @param text - The inference result text
+     * @param timingMetrics - Object containing queueingTime, inferenceTime, and totalLatency
      * @private
      */
-    _record(route, latency, evalRes, job, text) {
+    _record(route, latency, evalRes, job, text, timingMetrics) {
         this.stats.count++;
         if (route === 'cloud') this.stats.cloud++; else this.stats.device++;
         if (latency > 0) this.stats.totalLatencyMs += latency;
-        this.stats.results.push({job: job, route, latency, evalRes, text});
+        this.stats.results.push({
+            job: job, 
+            route, 
+            latency, 
+            evalRes, 
+            text,
+            queueingTime: timingMetrics.queueingTime,
+            inferenceTime: timingMetrics.inferenceTime,
+            totalLatency: timingMetrics.totalLatency,
+            timestamps: job.timestamps
+        });
     }
 }

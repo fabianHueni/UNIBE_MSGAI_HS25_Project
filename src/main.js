@@ -156,6 +156,9 @@ function downloadStatsAsCSV() {
     const flattened_evals = s.results.map(evaluation => ({
             route: evaluation.route,
             latency: evaluation.latency,
+            totalLatency: evaluation.totalLatency || 0,
+            queueingTime: evaluation.queueingTime || 0,
+            inferenceTime: evaluation.inferenceTime || 0,
             prompt: evaluation.job.prompt,
 
             // job details
@@ -193,6 +196,22 @@ function downloadStatsAsCSV() {
  */
 function updateStats() {
     const s = requestManager.stats;
+    
+    // Calculate average timing metrics
+    const avgTotalLatency = s.count ? (s.results.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.count) : 0;
+    const avgQueueingTime = s.count ? (s.results.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.count) : 0;
+    const avgInferenceTime = s.count ? (s.results.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.count) : 0;
+    
+    const cloudResults = s.results.filter(e => e.route === 'cloud');
+    const deviceResults = s.results.filter(e => e.route === 'device');
+    
+    const avgCloudTotal = s.cloud ? (cloudResults.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.cloud) : 0;
+    const avgCloudQueue = s.cloud ? (cloudResults.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.cloud) : 0;
+    const avgCloudInference = s.cloud ? (cloudResults.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.cloud) : 0;
+    
+    const avgDeviceTotal = s.device ? (deviceResults.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.device) : 0;
+    const avgDeviceQueue = s.device ? (deviceResults.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.device) : 0;
+    const avgDeviceInference = s.device ? (deviceResults.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.device) : 0;
 
     statsEl.innerHTML = `
         <div style="display: flex; justify-content: space-between;">
@@ -200,7 +219,9 @@ function updateStats() {
                 <h3>General Stats</h3>
                 <pre>
 Processed: ${s.count}
-Avg latency (ms): ${s.count ? (s.totalLatencyMs / s.count).toFixed(1) : 0}
+Avg total latency: ${avgTotalLatency.toFixed(1)}ms
+Avg queueing time: ${avgQueueingTime.toFixed(1)}ms
+Avg inference time: ${avgInferenceTime.toFixed(1)}ms
 Avg correct: ${s.count ? (s.results.reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.count * 100).toFixed(1) : 0}%
 Recent evaluations: ${Math.min(10, s.results.length)}
                 </pre>
@@ -209,8 +230,10 @@ Recent evaluations: ${Math.min(10, s.results.length)}
                 <h3>Cloud Stats</h3>
                 <pre>
 Requests: ${s.cloud}
-Avg latency (ms): ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud).toFixed(1) : 0}
-Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.cloud * 100).toFixed(1) : 0}%
+Avg total latency: ${avgCloudTotal.toFixed(1)}ms
+Avg queueing time: ${avgCloudQueue.toFixed(1)}ms
+Avg inference time: ${avgCloudInference.toFixed(1)}ms
+Avg correct: ${s.cloud ? (cloudResults.reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.cloud * 100).toFixed(1) : 0}%
                
                 </pre>
             </div>
@@ -218,8 +241,10 @@ Avg correct: ${s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, 
                 <h3>On-Device Stats</h3>
                 <pre>
 Requests: ${s.device}
-Avg latency (ms): ${s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device).toFixed(1) : 0}
-Avg correct: ${s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.device * 100).toFixed(1) : 0}%
+Avg total latency: ${avgDeviceTotal.toFixed(1)}ms
+Avg queueing time: ${avgDeviceQueue.toFixed(1)}ms
+Avg inference time: ${avgDeviceInference.toFixed(1)}ms
+Avg correct: ${s.device ? (deviceResults.reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.device * 100).toFixed(1) : 0}%
 
                 </pre>
             </div>
