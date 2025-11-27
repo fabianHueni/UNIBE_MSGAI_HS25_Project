@@ -1,4 +1,4 @@
-import {measureAsync} from './utils.js';
+import {measureAsync, sleep} from './utils.js';
 
 
 /**
@@ -68,6 +68,39 @@ export class RequestManager {
          * @type {{cloud: number, evaluations: *[], count: number, device: number, totalLatencyMs: number}}
          */
         this.stats = {count: 0, cloud: 0, device: 0, totalLatencyMs: 0, results: []};
+
+        /**
+         * Cloud job queue
+         * @type {*[]}
+         */
+        this.cloud_queue = [];
+
+        /**
+         * Device job queue
+         * @type {*[]}
+         */
+        this.device_queue = [];
+
+        // start processing jobs from the queues
+        this.runOnDeviceJobsFromQueue();
+        this.runCloudJobsFromQueue();
+    }
+
+    /**
+     * Push a job to the appropriate queue based on routing strategy.
+     *
+     * @param job - The job to be processed
+     */
+    pushJob(job) {
+        // get routing strategy and inference service
+        const route = this._choose(job);
+        console.log(`Device Queue Length: ${this.device_queue.length}, \nCloud Queue Length: ${this.cloud_queue.length}`);
+
+        if (route === 'cloud') {
+            this.cloud_queue.push(job);
+        } else {
+            this.device_queue.push(job);
+        }
     }
 
 
@@ -84,28 +117,69 @@ export class RequestManager {
 
 
     /**
-     * Handle a single inference job by routing it to the appropriate service,
-     * performing inference, evaluating the result, and recording statistics.
+     * Handle device jobs by routing it to the appropriate service, as long as there are jobs in the queue.
+     *
+     * @returns {Promise<void>}
+     */
+    async runOnDeviceJobsFromQueue() {
+        while (true) {
+            if (this.device_queue.length > 0) {
+                const job = this._getNextJobFromQueue(this.device_queue, 'fifo');
+                const service = this.device;
+                const route = 'device';
+
+                // run the job and await until compteted
+                await this._runJob(job, route, service);
+            }
+
+            // sleep for 10ms to not run into memory leak
+            await sleep(10);
+        }
+    }
+
+    /**
+     * Handle cloud jobs by routing it to the appropriate service, as long as there are jobs in the queue.
+     *
+     * @returns {Promise<void>}
+     */
+    async runCloudJobsFromQueue() {
+        while (true) {
+            if (this.cloud_queue.length > 0) {
+                const job = this._getNextJobFromQueue(this.cloud_queue, 'fifo');
+                const service = this.cloud;
+                const route = 'cloud';
+
+                // run the job and await until it completes
+                await this._runJob(job, route, service);
+            }
+
+            // sleep for 10ms to not run into memory leak
+            await sleep(10);
+        }
+    }
+
+
+    /**
+     * Run the given job on the specified service and record statistics.
      *
      * @param job - The job object containing prompt and ground truth
-     * @returns {Promise<{route: string, latency: number, text: string, job, evalRes: (*|XPathResult|{exact: *, f1: *})}>}
+     * @param route - The selected route ('cloud' or 'device')
+     * @param service - The inference service to use
+     * @returns {Promise<void>}
+     * @private
      */
-    async handle(job) {
-        // get routing strategy and inference service
-        const route = this._choose(job);
-        const service = this._getInferenceService(route);
-
+    async _runJob(job, route, service) {
         const full_prompt = job.prompt; // ensure string input
 
         let response, latencyMs; // response is object with .answer and .stats
         try {
             // Mark inference start
-            job.timestamps.inferenceStart = performance.now(); //TODO: take this timestamp in the service.infer method
-            
+            job.timestamps.inferenceStart = performance.now();
+
             const {res, ms} = await measureAsync(() => service.infer(full_prompt));
             response = res;
             latencyMs = ms;
-            
+
             // Mark inference end
             job.timestamps.inferenceEnd = performance.now();
         } catch (err) {
@@ -132,22 +206,11 @@ export class RequestManager {
             "; \nInference Time: " + inferenceTime.toFixed(2) + "ms" +
             "; \nQueueing Time: " + queueingTime.toFixed(2) + "ms" +
             "; \nTotal Latency: " + totalLatency.toFixed(2) + "ms");
-
-
-        return {job, route, latency: latencyMs, evalRes, text: response, queueingTime, inferenceTime, totalLatency};
     }
 
-
-    /**
-     * Get the inference service based on the selected route.
-     * Could be extended with more services in the future.
-     *
-     * @param route - The selected route ('cloud' or 'device')
-     * @returns {*}
-     * @private
-     */
-    _getInferenceService(route) {
-        return route === 'cloud' ? this.cloud : this.device;
+    _getNextJobFromQueue(queue, policy) {
+        // currently only FIFO is implemented
+        return queue.shift();
     }
 
     /**

@@ -34,7 +34,7 @@ const scheduler = new JobScheduler('boolq_validation');
 
 
 scheduler.onJob(async (job) => {
-    await requestManager.handle(job);
+    await requestManager.pushJob(job);
 });
 
 
