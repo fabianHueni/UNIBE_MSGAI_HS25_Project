@@ -39,8 +39,14 @@ scheduler.onJob(async (job) => {
 
 
 // add event listeners for configuration inputs
-document.getElementById('deviceModel').addEventListener('change', (e) =>
-    onDeviceInferenceService.updateConfig({modelName: e.target.value})
+document.getElementById('deviceModel').addEventListener('change', (e) => {
+        try {
+            const {modelName, quantization} = JSON.parse(e.target.value);
+            onDeviceInferenceService.updateConfig({modelName, quantization});
+        } catch (error) {
+            console.error('Invalid JSON in on device model selection:', e.target.value);
+        }
+    }
 );
 document.getElementById('cloudModel').addEventListener('change', (e) =>
     cloudInferenceService.updateConfig({model: e.target.value})
@@ -106,20 +112,20 @@ let isExperimentRunning = false;
 
 document.getElementById('start1000Btn').addEventListener('click', async () => {
     const TARGET_JOBS = 1000;
-    
+
     // Get configuration from UI
     const pattern = document.getElementById('patternSelect').value;
     const routeStrategy = document.getElementById('routeStrategy').value;
     const cloudProb = parseFloat(document.getElementById('cloudProb').value);
     const deviceModel = document.getElementById('deviceModel').value;
     const cloudModel = document.getElementById('cloudModel').value;
-    
+
     // Validate
     if (routeStrategy !== 'always_cloud' && !onDeviceInferenceService.isReady()) {
         alert('Please load the on-device model first, or select "Always Cloud" strategy.');
         return;
     }
-    
+
     if (routeStrategy !== 'always_device') {
         const apiKey = document.getElementById('cloudApiKey').value;
         if (!apiKey || apiKey.trim() === '') {
@@ -127,7 +133,7 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
             return;
         }
     }
-    
+
     // Store experiment config
     currentExperiment = {
         deviceModel,
@@ -136,61 +142,61 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
         pattern,
         startTime: new Date().toISOString()
     };
-    
+
     experimentJobCount = 0;
     experimentTargetJobs = TARGET_JOBS;
     isExperimentRunning = true;
-    
+
     // Reset stats
     requestManager.stats.count = 0;
     requestManager.stats.cloud = 0;
     requestManager.stats.device = 0;
     requestManager.stats.totalLatencyMs = 0;
     requestManager.stats.results = [];
-    
+
     // Update UI
     document.getElementById('startBtn').disabled = true;
     document.getElementById('stopBtn').disabled = false;
     document.getElementById('start1000Btn').disabled = true;
     document.getElementById('start1000Btn').textContent = `Running`;
-    
+
     // Update routing
     requestManager.updateRouting({routeStrategy, cloudProb});
-    
+
     console.log(`🚀 Starting experiment: ${TARGET_JOBS} jobs`);
     console.log(`📊 Config: Strategy=${routeStrategy}, Pattern=${pattern}`);
-    
+
     try {
         // Reload dataset to ensure we have enough items
         await scheduler.reloadDataset();
-        
+
         // Start the limited run
         await scheduler.startPattern(pattern, TARGET_JOBS);
-        
+
     } catch (error) {
         console.error('❌ Experiment error:', error);
         alert(`Experiment failed: ${error.message}`);
     }
-    
+
     // Finish experiment
     finishExperiment();
 });
 
 function finishExperiment() {
     if (!isExperimentRunning) return;
-    
+
     isExperimentRunning = false;
     console.log('✅ Experiment complete!');
-    
+
     // Stop the scheduler
     scheduler.stop();
-    
+
     // Update UI
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
     document.getElementById('start1000Btn').disabled = false;
     document.getElementById('start1000Btn').textContent = 'Start 1000';
-    
+
     // Auto-download results
     setTimeout(() => {
         downloadExperimentResults();
@@ -199,7 +205,7 @@ function finishExperiment() {
 
 function downloadExperimentResults() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    
+
     // Build model name for filename
     let modelName = '';
     if (currentExperiment.routeStrategy === 'always_cloud') {
@@ -211,9 +217,9 @@ function downloadExperimentResults() {
         const cloud = currentExperiment.cloudModel.replace(/[^a-zA-Z0-9]/g, '-');
         modelName = `${device}_${cloud}`;
     }
-    
+
     const filename = `experiment_${modelName}_${currentExperiment.routeStrategy}_${currentExperiment.pattern}_${timestamp}`;
-    
+
     // Build stats object with experiment info
     const stats = {
         experiment: {
@@ -223,7 +229,7 @@ function downloadExperimentResults() {
         },
         stats: requestManager.stats
     };
-    
+
     // Download CSV
     const csvContent = buildExperimentCSV(stats);
     const csvBlob = new Blob([csvContent], {type: 'text/csv'});
@@ -233,16 +239,16 @@ function downloadExperimentResults() {
     csvLink.download = `${filename}.csv`;
     csvLink.click();
     URL.revokeObjectURL(csvUrl);
-    
+
     console.log(`📥 Downloaded: ${filename}.csv`);
 }
 
 function buildExperimentCSV(stats) {
     const lines = [];
-    
+
     // Header
     lines.push('job_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer');
-    
+
     // Data rows
     stats.stats.results.forEach((result, index) => {
         const row = [
@@ -259,18 +265,18 @@ function buildExperimentCSV(stats) {
         ];
         lines.push(row.join(','));
     });
-    
+
     // Calculate averages
     const results = stats.stats.results;
     const count = results.length;
-    
+
     if (count > 0) {
         const avgLatency = results.reduce((sum, r) => sum + (r.latency || 0), 0) / count;
         const avgTotalLatency = results.reduce((sum, r) => sum + (r.totalLatency || 0), 0) / count;
         const avgQueueingTime = results.reduce((sum, r) => sum + (r.queueingTime || 0), 0) / count;
         const avgInferenceTime = results.reduce((sum, r) => sum + (r.inferenceTime || 0), 0) / count;
         const accuracy = results.filter(r => r.evalRes?.exactMatch).length / count * 100;
-        
+
         // Add empty line and summary
         lines.push('');
         lines.push('# Summary');
@@ -281,7 +287,7 @@ function buildExperimentCSV(stats) {
         lines.push(`avg_queueing_time_ms,${avgQueueingTime.toFixed(2)}`);
         lines.push(`avg_inference_time_ms,${avgInferenceTime.toFixed(2)}`);
     }
-    
+
     return lines.join('\n');
 }
 
@@ -382,19 +388,19 @@ function downloadStatsAsCSV() {
  */
 function updateStats() {
     const s = requestManager.stats;
-    
+
     // Calculate average timing metrics
     const avgTotalLatency = s.count ? (s.results.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.count) : 0;
     const avgQueueingTime = s.count ? (s.results.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.count) : 0;
     const avgInferenceTime = s.count ? (s.results.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.count) : 0;
-    
+
     const cloudResults = s.results.filter(e => e.route === 'cloud');
     const deviceResults = s.results.filter(e => e.route === 'device');
-    
+
     const avgCloudTotal = s.cloud ? (cloudResults.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.cloud) : 0;
     const avgCloudQueue = s.cloud ? (cloudResults.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.cloud) : 0;
     const avgCloudInference = s.cloud ? (cloudResults.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.cloud) : 0;
-    
+
     const avgDeviceTotal = s.device ? (deviceResults.reduce((a, b) => a + (b.totalLatency || 0), 0) / s.device) : 0;
     const avgDeviceQueue = s.device ? (deviceResults.reduce((a, b) => a + (b.queueingTime || 0), 0) / s.device) : 0;
     const avgDeviceInference = s.device ? (deviceResults.reduce((a, b) => a + (b.inferenceTime || 0), 0) / s.device) : 0;

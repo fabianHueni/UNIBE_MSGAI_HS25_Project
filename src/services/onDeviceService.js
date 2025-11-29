@@ -8,8 +8,9 @@ import {pipeline} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3
  * TODO Implement this class!
  */
 export class OnDeviceService {
-    constructor({modelName = 'Xenova/distilgpt2'} = {}) {
+    constructor({modelName = ''} = {}) {
         this.modelName = modelName;
+        this.modelQuantization = 'fp32';
         this._ready = false;
         this._model = null;
     }
@@ -42,7 +43,7 @@ export class OnDeviceService {
         this._model = await pipeline('text-generation', this.modelName, {
             progress_callback: progressCb || defaultProgressCb,
             device: 'webgpu', // run on WebGPU if available
-            dtype: "fp32"
+            dtype: this.modelQuantization, // set model quantization
         });
         console.log(`✅ Model '${this.modelName}' loaded and ready.`);
         this._ready = true;
@@ -97,7 +98,8 @@ export class OnDeviceService {
      *
      * @param modelName - The name of the model to use
      */
-    updateConfig({modelName}) {
+    updateConfig({modelName, quantization} = {}) {
         if (modelName) this.modelName = modelName;
+        if (quantization) this.modelQuantization = quantization;
     }
 }
