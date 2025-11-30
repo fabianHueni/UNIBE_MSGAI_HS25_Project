@@ -13,7 +13,8 @@ const deviceStatusEl = document.getElementById('deviceStatus');
 
 
 // instantiate services and components
-const onDeviceInferenceService = new OnDeviceService({modelName: document.getElementById('deviceModel').value});
+console.log(getModelSelection())
+const onDeviceInferenceService = new OnDeviceService(getModelSelection());
 const cloudInferenceService = new CloudService({
     apiKey: document.getElementById('cloudApiKey').value,
     model: document.getElementById('cloudModel').value
@@ -40,12 +41,7 @@ scheduler.onJob(async (job) => {
 
 // add event listeners for configuration inputs
 document.getElementById('deviceModel').addEventListener('change', (e) => {
-        try {
-            const {modelName, quantization} = JSON.parse(e.target.value);
-            onDeviceInferenceService.updateConfig({modelName, quantization});
-        } catch (error) {
-            console.error('Invalid JSON in on device model selection:', e.target.value);
-        }
+        onDeviceInferenceService.updateConfig(getModelSelection())
     }
 );
 document.getElementById('cloudModel').addEventListener('change', (e) =>
@@ -117,7 +113,7 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
     const pattern = document.getElementById('patternSelect').value;
     const routeStrategy = document.getElementById('routeStrategy').value;
     const cloudProb = parseFloat(document.getElementById('cloudProb').value);
-    const deviceModel = document.getElementById('deviceModel').value;
+    const deviceModel = getModelSelection().modelName;
     const cloudModel = document.getElementById('cloudModel').value;
 
     // Validate
@@ -291,6 +287,15 @@ function buildExperimentCSV(stats) {
     return lines.join('\n');
 }
 
+function getModelSelection() {
+    try {
+        return JSON.parse(document.getElementById('deviceModel').value);
+    } catch (error) {
+        console.error('Invalid JSON in model selection:', value);
+        return null;
+    }
+}
+
 
 async function loadDeviceModel() {
     deviceStatusEl.textContent = 'Loading...';
@@ -319,6 +324,9 @@ async function loadDeviceModel() {
         deviceStatusEl.textContent = 'Model Ready';
         loadingBar.style.width = '100%';
         loadingText.textContent = 'Model loaded.';
+        document.getElementById('loadDeviceModelBtn').disabled = false;
+        document.getElementById('loadDeviceModelBtn').textContent = 'Load Model';
+
     } catch (e) {
         console.error('❌ Error loading on-device model:', e);
         deviceStatusEl.textContent = `Error: ${e.message}`;

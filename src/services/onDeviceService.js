@@ -8,9 +8,9 @@ import {pipeline} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3
  * TODO Implement this class!
  */
 export class OnDeviceService {
-    constructor({modelName = ''} = {}) {
+    constructor({modelName = '', quantization = 'fp32'} = {}) {
         this.modelName = modelName;
-        this.modelQuantization = 'fp32';
+        this.modelQuantization = quantization;
         this._ready = false;
         this._model = null;
     }
