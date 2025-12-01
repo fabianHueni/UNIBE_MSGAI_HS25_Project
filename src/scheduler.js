@@ -60,7 +60,7 @@ export class JobScheduler {
                 this._emit(item);
                 jobsEmitted++;
                 if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
-                    const timeToNextArrival = this._generateInterarrivalTime(this._interArrivalTimeLambda);
+                    const timeToNextArrival = this._generateExponentialInterarrivalTime(this._interArrivalTimeLambda);
                     await sleep(timeToNextArrival);
                 }
             }
@@ -154,13 +154,13 @@ export class JobScheduler {
 
 
     /**
-     * Generate interarrival time based on exponential distribution
+     * Generate interarrival time based on exponential interarrival distribution (equals a poisson process)
      *
      * @param lambda - rate parameter (requests per second)
      * @returns {number} - interarrival time in milliseconds
      * @private
      */
-    _generateInterarrivalTime(lambda) {
+    _generateExponentialInterarrivalTime(lambda) {
         const u = Math.random(); // uniform random number between 0 and 1
         return -Math.log(u) / lambda * 1000; // convert to milliseconds
     }
