@@ -3,7 +3,7 @@ import {RequestManager} from './requestManager.js';
 import {OnDeviceService} from './services/onDeviceService.js';
 import {CloudService} from './services/cloudService.js';
 import {Evaluator} from './evaluator.js';
-import {logTo} from './utils.js';
+import {logTo, sleep} from './utils.js';
 
 
 // get references to html elements
@@ -66,8 +66,6 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     // update request manager routing strategy
     requestManager.updateRouting({routeStrategy, cloudProb});
 
-
-    // TODO Adjust that the model is loaded with a button such that user can see loading status and trigger loading before starting
     // starting is only available when model is loaded
     if (routeStrategy !== 'always_cloud' && !onDeviceInferenceService.isReady()) {
         await loadDeviceModel();
@@ -105,9 +103,9 @@ let currentExperiment = null;
 let experimentJobCount = 0;
 let experimentTargetJobs = 0;
 let isExperimentRunning = false;
+const TARGET_JOBS = 1000;
 
 document.getElementById('start1000Btn').addEventListener('click', async () => {
-    const TARGET_JOBS = 1000;
 
     // Get configuration from UI
     const pattern = document.getElementById('patternSelect').value;
@@ -174,7 +172,13 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
         alert(`Experiment failed: ${error.message}`);
     }
 
-    // Finish experiment
+    // wait for all jobs to complete and check every 2 seconds (yes is a bit hacky)
+    // this is necessary since the jobs are processed async and some may still be running although no more jobs are scheduled
+    while (isExperimentRunning && requestManager.stats.count < TARGET_JOBS) {
+        await sleep(2000);
+    }
+
+    // Then finish experiment
     finishExperiment();
 });
 
@@ -214,8 +218,6 @@ function downloadExperimentResults() {
         modelName = `${device}_${cloud}`;
     }
 
-    const filename = `experiment_${modelName}_${currentExperiment.routeStrategy}_${currentExperiment.pattern}_${timestamp}`;
-
     // Build stats object with experiment info
     const stats = {
         experiment: {
@@ -226,17 +228,29 @@ function downloadExperimentResults() {
         stats: requestManager.stats
     };
 
-    // Download CSV
-    const csvContent = buildExperimentCSV(stats);
-    const csvBlob = new Blob([csvContent], {type: 'text/csv'});
-    const csvUrl = URL.createObjectURL(csvBlob);
-    const csvLink = document.createElement('a');
-    csvLink.href = csvUrl;
-    csvLink.download = `${filename}.csv`;
-    csvLink.click();
-    URL.revokeObjectURL(csvUrl);
+    // Download CSV files of statistics and raw results
+    const filesToDownload = [
+        {
+            "name": `stats_experiment_${modelName}_${currentExperiment.routeStrategy}_${currentExperiment.pattern}_${timestamp}`,
+            "csv": buildStatisticCSV(stats)
+        },
+        {
+            "name": `raw_experiment_${modelName}_${currentExperiment.routeStrategy}_${currentExperiment.pattern}_${timestamp}`,
+            "csv": buildExperimentCSV(stats)
+        }
+    ];
 
-    console.log(`📥 Downloaded: ${filename}.csv`);
+    for (const file of filesToDownload) {
+        const csvBlob = new Blob([file.csv], {type: 'text/csv'});
+        const csvUrl = URL.createObjectURL(csvBlob);
+        const csvLink = document.createElement('a');
+        csvLink.href = csvUrl;
+        csvLink.download = `${file.name}.csv`;
+        csvLink.click();
+        URL.revokeObjectURL(csvUrl);
+
+        console.log(`📥 Downloaded: ${file.name}.csv`);
+    }
 }
 
 function buildExperimentCSV(stats) {
@@ -261,27 +275,68 @@ function buildExperimentCSV(stats) {
         ];
         lines.push(row.join(','));
     });
+    return lines.join('\n');
+}
+
+/**
+ * Build a CSV with the statistics of an experiment run.
+ * Stores the following fields for on device, in cloud and overall:
+ * - total_requests
+ * - accuracy_percent
+ * - avg_latency_ms
+ * - avg_total_latency_ms
+ * - avg_queueing_time_ms
+ * - avg_inference_time_ms
+ *
+ * @param stats
+ */
+function buildStatisticCSV(stats) {
+    const lines = [];
+
+    // Header
+    lines.push('route, total_requests, accuracy_percent, avg_latency_ms, avg_total_latency_ms, avg_queueing_time_ms, avg_inference_time_ms');
 
     // Calculate averages
     const results = stats.stats.results;
     const count = results.length;
 
     if (count > 0) {
+
+        // Overall stats
         const avgLatency = results.reduce((sum, r) => sum + (r.latency || 0), 0) / count;
         const avgTotalLatency = results.reduce((sum, r) => sum + (r.totalLatency || 0), 0) / count;
         const avgQueueingTime = results.reduce((sum, r) => sum + (r.queueingTime || 0), 0) / count;
         const avgInferenceTime = results.reduce((sum, r) => sum + (r.inferenceTime || 0), 0) / count;
         const accuracy = results.filter(r => r.evalRes?.exactMatch).length / count * 100;
+        lines.push(`overall, ${count}, ${accuracy.toFixed(2)}, ${avgLatency.toFixed(2)}, ${avgTotalLatency.toFixed(2)}, ${avgQueueingTime.toFixed(2)}, ${avgInferenceTime.toFixed(2)}`);
 
-        // Add empty line and summary
-        lines.push('');
-        lines.push('# Summary');
-        lines.push(`total_requests,${count}`);
-        lines.push(`accuracy_percent,${accuracy.toFixed(2)}`);
-        lines.push(`avg_latency_ms,${avgLatency.toFixed(2)}`);
-        lines.push(`avg_total_latency_ms,${avgTotalLatency.toFixed(2)}`);
-        lines.push(`avg_queueing_time_ms,${avgQueueingTime.toFixed(2)}`);
-        lines.push(`avg_inference_time_ms,${avgInferenceTime.toFixed(2)}`);
+        // Device stats
+        const deviceResults = results.filter(r => r.route === 'device');
+        if (deviceResults.length > 0) {
+            const deviceCount = deviceResults.length;
+            const deviceAvgLatency = deviceResults.reduce((sum, r) => sum + (r.latency || 0), 0) / deviceCount;
+            const deviceAvgTotalLatency = deviceResults.reduce((sum, r) => sum + (r.totalLatency || 0), 0) / deviceCount;
+            const deviceAvgQueueingTime = deviceResults.reduce((sum, r) => sum + (r.queueingTime || 0), 0) / deviceCount;
+            const deviceAvgInferenceTime = deviceResults.reduce((sum, r) => sum + (r.inferenceTime || 0), 0) / deviceCount;
+            const deviceAccuracy = deviceResults.filter(r => r.evalRes?.exactMatch).length / deviceCount * 100;
+            lines.push(`device, ${deviceCount}, ${deviceAccuracy.toFixed(2)}, ${deviceAvgLatency.toFixed(2)}, ${deviceAvgTotalLatency.toFixed(2)}, ${deviceAvgQueueingTime.toFixed(2)}, ${deviceAvgInferenceTime.toFixed(2)}`);
+        } else {
+            lines.push(`device, 0, 0.00, 0.00, 0.00, 0.00, 0.00`);
+        }
+
+        // Cloud stats
+        const cloudResults = results.filter(r => r.route === 'cloud');
+        if (cloudResults.length > 0) {
+            const cloudCount = cloudResults.length;
+            const cloudAvgLatency = cloudResults.reduce((sum, r) => sum + (r.latency || 0), 0) / cloudCount;
+            const cloudAvgTotalLatency = cloudResults.reduce((sum, r) => sum + (r.totalLatency || 0), 0) / cloudCount;
+            const cloudAvgQueueingTime = cloudResults.reduce((sum, r) => sum + (r.queueingTime || 0), 0) / cloudCount;
+            const cloudAvgInferenceTime = cloudResults.reduce((sum, r) => sum + (r.inferenceTime || 0), 0) / cloudCount;
+            const cloudAccuracy = cloudResults.filter(r => r.evalRes?.exactMatch).length / cloudCount * 100;
+            lines.push(`cloud, ${cloudCount}, ${cloudAccuracy.toFixed(2)}, ${cloudAvgLatency.toFixed(2)}, ${cloudAvgTotalLatency.toFixed(2)}, ${cloudAvgQueueingTime.toFixed(2)}, ${cloudAvgInferenceTime.toFixed(2)}`);
+        } else {
+            lines.push(`cloud, 0, 0.00, 0.00, 0.00, 0.00, 0.00`);
+        }
     }
 
     return lines.join('\n');
@@ -310,10 +365,10 @@ async function loadDeviceModel() {
     function updateModelLoadingUI(progress) {
         console.log('Model loading progress:', progress);
         if (progress && progress.loaded && progress.total) {
-            files[progress.file] = { loaded: progress.loaded, total: progress.total };
+            files[progress.file] = {loaded: progress.loaded, total: progress.total};
             const fileNames = Object.keys(files);
             const hasOnnxFile = Boolean(fileNames.find(name => name.endsWith('.onnx')));
-            if(!hasOnnxFile){
+            if (!hasOnnxFile) {
                 loadingBar.style.width = '0%';
                 loadingText.textContent = `Loading: 0% (0 GB / ... GB)`;
                 return;
