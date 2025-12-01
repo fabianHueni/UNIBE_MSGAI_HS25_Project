@@ -305,13 +305,25 @@ async function loadDeviceModel() {
     const loadingText = document.getElementById('deviceLoadingText');
     loadingBar.style.width = '0%';
     loadingText.textContent = '';
+    const files = {};
 
     function updateModelLoadingUI(progress) {
         console.log('Model loading progress:', progress);
         if (progress && progress.loaded && progress.total) {
-            const percent = ((progress.loaded / progress.total) * 100).toFixed(1);
+            files[progress.file] = { loaded: progress.loaded, total: progress.total };
+            const fileNames = Object.keys(files);
+            const hasOnnxFile = Boolean(fileNames.find(name => name.endsWith('.onnx')));
+            if(!hasOnnxFile){
+                loadingBar.style.width = '0%';
+                loadingText.textContent = `Loading: 0% (0 GB / ... GB)`;
+                return;
+            }
+            const filesArray = Object.values(files);
+            const totalBytes = filesArray.reduce((total, file) => total + file.total, 0);
+            const loadedBytes = filesArray.reduce((total, file) => total + file.loaded, 0);
+            const percent = ((loadedBytes / totalBytes) * 100).toFixed(1);
             loadingBar.style.width = percent + '%';
-            loadingText.textContent = `Loading: ${percent}% (${(progress.loaded / (1024 ** 3)).toFixed(2)} GB / ${(progress.total / (1024 ** 3)).toFixed(2)} GB)`;
+            loadingText.textContent = `Loading: ${percent}% (${(loadedBytes / (1024 ** 3)).toFixed(2)} GB / ${(totalBytes / (1024 ** 3)).toFixed(2)} GB)`;
         } else if (progress && progress.status) {
             loadingText.textContent = progress.status;
         } else if (typeof progress === 'string') {
