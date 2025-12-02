@@ -174,18 +174,18 @@ export class RequestManager {
         let response, latencyMs, cleanedResponse; // response is object with .answer and .stats
         try {
             // Mark inference start
-            job.timestamps.inferenceStart = performance.now();
+            job.timestamps.inferenceStart = Date.now();
 
             const {res, ms} = await measureAsync(() => service.infer(full_prompt));
             response = res;
             latencyMs = ms;
 
             // Mark inference end
-            job.timestamps.inferenceEnd = performance.now();
+            job.timestamps.inferenceEnd = Date.now();
         } catch (err) {
             response = `__error__:${err.message}`;
             latencyMs = -1;
-            job.timestamps.inferenceEnd = performance.now();
+            job.timestamps.inferenceEnd = Date.now();
         }
 
         // Calculate timing metrics

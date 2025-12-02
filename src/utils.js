@@ -38,3 +38,14 @@ export function logTo(el, evt) {
     el.appendChild(row);
     el.scrollTop = el.scrollHeight;
 }
+
+
+/**
+ * Approximates the number of words in a given text string
+ *
+ * @param text - Input text string
+ * @returns {number} - Approximate number of words
+ */
+export function getNumberOfWords(text) {
+    return text.trim().split(/\s+/).length;
+}

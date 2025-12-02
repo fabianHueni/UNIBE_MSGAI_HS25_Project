@@ -3,7 +3,7 @@ import {RequestManager} from './requestManager.js';
 import {OnDeviceService} from './services/onDeviceService.js';
 import {CloudService} from './services/cloudService.js';
 import {Evaluator} from './evaluator.js';
-import {logTo, sleep} from './utils.js';
+import {getNumberOfWords, logTo, sleep} from './utils.js';
 
 
 // get references to html elements
@@ -78,13 +78,11 @@ document.getElementById('startBtn').addEventListener('click', async () => {
 
 document.getElementById('stopBtn').addEventListener('click', () => {
     scheduler.stop();
+    isExperimentRunning = false;
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
 });
 
-document.getElementById('downloadStatsJson').addEventListener('click', () => {
-    downloadStatsAsJson();
-});
 document.getElementById('downloadStatsCsv').addEventListener('click', () => {
     downloadStatsAsCSV();
 });
@@ -103,7 +101,7 @@ let currentExperiment = null;
 let experimentJobCount = 0;
 let experimentTargetJobs = 0;
 let isExperimentRunning = false;
-const TARGET_JOBS = 1000;
+const TARGET_JOBS = 500;
 
 document.getElementById('start1000Btn').addEventListener('click', async () => {
 
@@ -134,7 +132,7 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
         cloudModel,
         routeStrategy,
         pattern,
-        startTime: new Date().toISOString()
+        startTime: Date.now()
     };
 
     experimentJobCount = 0;
@@ -183,8 +181,6 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
 });
 
 function finishExperiment() {
-    if (!isExperimentRunning) return;
-
     isExperimentRunning = false;
     console.log('✅ Experiment complete!');
 
@@ -222,7 +218,7 @@ function downloadExperimentResults() {
     const stats = {
         experiment: {
             ...currentExperiment,
-            endTime: new Date().toISOString(),
+            endTime: Date.now(),
             completedJobs: requestManager.stats.count
         },
         stats: requestManager.stats
@@ -257,7 +253,7 @@ function buildExperimentCSV(stats) {
     const lines = [];
 
     // Header
-    lines.push('job_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer');
+    lines.push('job_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
 
     // Data rows
     stats.stats.results.forEach((result, index) => {
@@ -271,7 +267,19 @@ function buildExperimentCSV(stats) {
             result.evalRes?.exactMatch || false,
             (result.evalRes?.f1WordLevel || 0).toFixed(4),
             `"${(result.job?.groundTruth || '').replace(/"/g, '""')}"`,
-            `"${(result.text?.answer || '').replace(/"/g, '""')}"`
+            `"${(result.text?.answer || '').replace(/"/g, '""')}"`,
+            result.job.timestamps.jobStart || 0,
+            result.job.timestamps.inferenceStart || 0,
+            result.job.timestamps.inferenceEnd || 0,
+            `"${(result.job.prompt || '').replace(/"/g, '""')}"`,
+            getNumberOfWords(result.job.prompt || ''),
+            result.job.prompt.length,
+            stats.experiment.startTime || 0,
+            stats.experiment.endTime || 0,
+            stats.experiment.routeStrategy,
+            stats.experiment.pattern,
+            stats.experiment.deviceModel,
+            stats.experiment.cloudModel
         ];
         lines.push(row.join(','));
     });
@@ -403,53 +411,23 @@ async function loadDeviceModel() {
     }
 }
 
-function downloadStatsAsJson() {
-    const s = requestManager.stats;
-    // add average latency to stats for device and cloud
-    s.avgLatencyMs = s.count ? (s.totalLatencyMs / s.count) : 0;
-    s.avgDeviceLatencyMs = s.device ? (s.results.filter(e => e.route === 'device').reduce((a, b) => a + b.latency, 0) / s.device) : 0;
-    s.avgCloudLatencyMs = s.cloud ? (s.results.filter(e => e.route === 'cloud').reduce((a, b) => a + b.latency, 0) / s.cloud) : 0;
-
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(s, null, 2));
-    const dlAnchorElem = document.createElement('a');
-    dlAnchorElem.setAttribute("href", dataStr);
-    dlAnchorElem.setAttribute("download", "stats.json");
-    dlAnchorElem.click();
-}
-
 function downloadStatsAsCSV() {
-    const s = requestManager.stats;
 
-    const flattened_evals = s.results.map(evaluation => ({
-            route: evaluation.route,
-            latency: evaluation.latency,
-            totalLatency: evaluation.totalLatency || 0,
-            queueingTime: evaluation.queueingTime || 0,
-            inferenceTime: evaluation.inferenceTime || 0,
-            prompt: evaluation.job.prompt,
+    // make the stats compatible with buildExperimentCSV method for reuse
+    const stats = {
+        experiment: {
+            deviceModel: getModelSelection().modelName,
+            cloudModel: document.getElementById('cloudModel').value,
+            routeStrategy: document.getElementById('routeStrategy').value,
+            pattern: document.getElementById('patternSelect').value,
+            startTime: null,
+            endTime: Date.now(),
+            completedJobs: requestManager.stats.count
+        },
+        stats: requestManager.stats
+    };
 
-            // job details
-            groundTruth: evaluation.job.groundTruth,
-            answer: evaluation.text.answer,
-
-            // evaluation results
-            exactMatch: evaluation.evalRes.exactMatch,
-            f1: evaluation.evalRes.f1WordLevel,
-            tokensPerSecond: evaluation.evalRes.tokensPerSecond,
-            totalTokens: evaluation.evalRes.totalTokens,
-
-            // further stats
-            input_tokens: evaluation.text.stats.input_tokens,
-            output_tokens: evaluation.text.stats.output_tokens,
-        })
-    );
-
-    // Convert stats to CSV format
-    const headers = Object.keys(flattened_evals[0] || {}).join(',');
-    const rows = flattened_evals.map(evaluation =>
-        Object.values(evaluation).map(value => `"${value}"`).join(',')
-    );
-    const csvContent = [headers, ...rows].join('\n');
+    const csvContent = buildExperimentCSV(stats);
 
     const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
     const dlAnchorElem = document.createElement('a');
