@@ -31,7 +31,7 @@ export class CloudService {
     async infer(prompt) {
         if (!this.apiKey) throw new Error('No API key set for CloudService');
 
-        // prepare payload with prompt
+        // prepare payload with prompt              //TODO: set enableThinking to the same value as in onDeviceService. (false)
         const payload = {
             model: this.model,
             max_tokens: 500,

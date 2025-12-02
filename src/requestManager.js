@@ -266,7 +266,15 @@ export class RequestManager {
         });
     }
 
-
+    /**
+     * Remove reasoning/thinking tokens and sections from a model's response.
+     * Supports various formats (XML tags, special tokens, markdown, etc.) used by reasoning models.
+     * Returns a cleaned response object with only the final answer for evaluation.
+     *
+     * @param response - The uncleaned response object (may include reasoning/thinking sections)
+     * @return {object|string} - Cleaned response object or original error string
+     * @private
+     */
     _stripThinkingTokens(response) {
         // If response is an error string, return as-is
         if (typeof response === 'string' && response.startsWith('__error__')) {
