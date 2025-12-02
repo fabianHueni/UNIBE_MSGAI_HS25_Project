@@ -26,6 +26,7 @@ export function logTo(el, evt) {
     if (!el) return;
     const row = document.createElement('tr');
     row.innerHTML = `
+        <td>${evt.job.id}</td>
         <td>${new Date().toLocaleTimeString()}</td>
         <td>${evt.route}</td>
         <td>${evt.totalLatency?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>

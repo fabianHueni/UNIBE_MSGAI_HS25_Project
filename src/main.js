@@ -13,7 +13,6 @@ const deviceStatusEl = document.getElementById('deviceStatus');
 
 
 // instantiate services and components
-console.log(getModelSelection())
 const onDeviceInferenceService = new OnDeviceService(getModelSelection());
 const cloudInferenceService = new CloudService({
     apiKey: document.getElementById('cloudApiKey').value,
@@ -30,7 +29,7 @@ const requestManager = new RequestManager({
 });
 
 
-// instantiate the job scheduler with some mock prompts TODO: replace with real prompts
+// instantiate the job scheduler with some mock prompts
 const scheduler = new JobScheduler('boolq_validation');
 
 
@@ -253,12 +252,12 @@ function buildExperimentCSV(stats) {
     const lines = [];
 
     // Header
-    lines.push('job_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
+    lines.push('dataset_item_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
 
     // Data rows
     stats.stats.results.forEach((result, index) => {
         const row = [
-            index,
+            result.job.id,
             result.route || '',
             (result.latency || 0).toFixed(2),
             (result.totalLatency || 0).toFixed(2),

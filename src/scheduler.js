@@ -115,6 +115,7 @@ export class JobScheduler {
     _emit(item) {
         if (this._onJob) {
             const job = {
+                id: item.id,
                 prompt: item.prompt, 
                 groundTruth: item.groundTruth,
                 timestamps: {
@@ -158,15 +159,15 @@ export class JobScheduler {
                         }
                         fields.push(field);
                     }
-                    const [question, answer, context] = fields;
-                    
+                    const [id, question, answer, context] = fields;
+
                     // More explicit prompt to get concise answers
                     const full_prompt = `Question: ${question}
                                         Context: ${context}
                                         Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
                                         Answer:`;
                                         
-                    return {prompt: full_prompt, groundTruth: answer};
+                    return {id: id, prompt: full_prompt, groundTruth: answer};
                 });
                 console.log(`✅ Dataset '${name}' loaded with ${this._dataset.length} items.`);
             })
