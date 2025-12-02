@@ -66,6 +66,28 @@ export class JobScheduler {
         this.running = false;
     }
 
+    /**
+     * Reload the dataset (useful for running multiple experiments)
+     */
+    async reloadDataset() {
+        return new Promise((resolve, reject) => {
+            this._loadDataset(this._datasetName);
+            // Wait a bit for the fetch to complete
+            const checkLoaded = setInterval(() => {
+                if (this._dataset && this._dataset.length > 0) {
+                    clearInterval(checkLoaded);
+                    resolve();
+                }
+            }, 100);
+            // Timeout after 10 seconds
+            setTimeout(() => {
+                clearInterval(checkLoaded);
+                reject(new Error('Dataset loading timeout'));
+            }, 10000);
+        });
+    }
+
+
 
     /**
      * Emit a job with the item from the dataset to process
