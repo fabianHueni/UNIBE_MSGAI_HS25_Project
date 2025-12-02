@@ -34,7 +34,7 @@ export class CloudService {
         // prepare payload with prompt
         const payload = {
             model: this.model,
-            max_tokens: 50,
+            max_tokens: 500,
             messages: [{role: 'user', content: prompt}]
         };
 

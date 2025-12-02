@@ -171,7 +171,7 @@ export class RequestManager {
     async _runJob(job, route, service) {
         const full_prompt = job.prompt; // ensure string input
 
-        let response, latencyMs; // response is object with .answer and .stats
+        let response, latencyMs, cleanedResponse; // response is object with .answer and .stats
         try {
             // Mark inference start
             job.timestamps.inferenceStart = performance.now();
@@ -193,15 +193,19 @@ export class RequestManager {
         const inferenceTime = job.timestamps.inferenceEnd - job.timestamps.inferenceStart;
         const totalLatency = job.timestamps.inferenceEnd - job.timestamps.jobStart;
 
+        // clean response
+        cleanedResponse = this._stripThinkingTokens(response);
+
         // evaluate result and store results
-        const evalRes = this.evaluator.evaluate(response, job.groundTruth, latencyMs);
-        this._record(route, latencyMs, evalRes, job, response, {queueingTime, inferenceTime, totalLatency});
+        const evalRes = this.evaluator.evaluate(cleanedResponse, job.groundTruth, latencyMs);
+        this._record(route, latencyMs, evalRes, job, cleanedResponse, {queueingTime, inferenceTime, totalLatency});
 
         // logging the result
-        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: response, queueingTime, inferenceTime, totalLatency});
+        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: cleanedResponse, queueingTime, inferenceTime, totalLatency});
 
         // logging on console
         console.log("🎯 Models Answer: " + response.answer +
+            "; \nCleaned Answer: " + cleanedResponse.answer +
             '; \nGround Truth: ' + job.groundTruth +
             "; \nInference Time: " + inferenceTime.toFixed(2) + "ms" +
             "; \nQueueing Time: " + queueingTime.toFixed(2) + "ms" +
@@ -260,5 +264,61 @@ export class RequestManager {
             totalLatency: timingMetrics.totalLatency,
             timestamps: job.timestamps
         });
+    }
+
+
+    _stripThinkingTokens(response) {
+        // If response is an error string, return as-is
+        if (typeof response === 'string' && response.startsWith('__error__')) {
+            return response;
+        }
+
+        // Clone the response object to avoid mutating the original
+        const cleanedResponse = { ...response };
+        
+        if (!cleanedResponse.answer || typeof cleanedResponse.answer !== 'string') {
+            return cleanedResponse;
+        }
+
+        let cleanedAnswer = cleanedResponse.answer;
+
+        // Define patterns for thinking tokens (common formats)
+        const thinkingPatterns = [
+            // XML-style tags
+            /<think>[\s\S]*?<\/think>/gi,
+            /<thinking>[\s\S]*?<\/thinking>/gi,
+            /<reasoning>[\s\S]*?<\/reasoning>/gi,
+            /<thought>[\s\S]*?<\/thought>/gi,
+            
+            // Special tokens
+            /<\|startofthinking\|>[\s\S]*?<\|endofthinking\|>/gi,
+            /<\|reasoning_start\|>[\s\S]*?<\|reasoning_end\|>/gi,
+            
+            // Markdown-style
+            /\[THINKING\][\s\S]*?\[\/THINKING\]/gi,
+            /\[REASONING\][\s\S]*?\[\/REASONING\]/gi,
+            /\[THOUGHT\][\s\S]*?\[\/THOUGHT\]/gi,
+            
+            // Other common patterns
+            /\*\*Thinking:\*\*[\s\S]*?(?=\*\*Answer:\*\*|$)/gi,
+            /\*\*Reasoning:\*\*[\s\S]*?(?=\*\*Answer:\*\*|$)/gi,
+        ];
+
+        // Apply all patterns to remove thinking sections
+        for (const pattern of thinkingPatterns) {
+            cleanedAnswer = cleanedAnswer.replace(pattern, '');
+        }
+
+        // Clean up extra whitespace
+        cleanedAnswer = cleanedAnswer.trim();
+        
+        // If we removed everything, keep original (safety check)
+        if (cleanedAnswer.length === 0 && cleanedResponse.answer.length > 0) {
+            console.warn('⚠️ Thinking token removal resulted in empty answer. Keeping original.');
+            return cleanedResponse;
+        }
+
+        cleanedResponse.answer = cleanedAnswer;
+        return cleanedResponse;
     }
 }
