@@ -67,7 +67,7 @@ export class OnDeviceService {
      * @param maxNewTokens - Maximum number of new tokens to generate
      * @returns {Promise<string>}
      */
-    async infer(prompt, {maxNewTokens = 500} = {}) {
+    async infer(prompt, {maxNewTokens = 50} = {}) {
         if (!this._ready || !this._model) {
             console.log("model not ready:", this._ready, this._model);
             throw new Error('Model not loaded. Call load() first.');
