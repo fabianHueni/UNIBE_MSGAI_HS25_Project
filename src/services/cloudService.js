@@ -76,4 +76,13 @@ export class CloudService {
             }
         };
     }
+
+    /**
+     * Retrieve the name of the currently loaded model.
+     *
+     * @returns {string} - The name of the model as a string.
+     */
+    getModelName(){
+        return this.modelName;
+    }
 }

@@ -81,7 +81,6 @@ export class OnDeviceService {
         const output = await this._model(messages, {
             max_new_tokens: maxNewTokens,
             temperature: 0.2,
-            enableThinking: false,
         });
 
         console.log("✅ Completed inference on-device for prompt:\n", prompt);
@@ -102,5 +101,15 @@ export class OnDeviceService {
     updateConfig({modelName, quantization} = {}) {
         if (modelName) this.modelName = modelName;
         if (quantization) this.modelQuantization = quantization;
+    }
+
+
+    /**
+     * Retrieve the name of the currently loaded model.
+     *
+     * @returns {string} - The name of the model as a string.
+     */
+    getModelName(){
+        return this.modelName;
     }
 }

@@ -169,7 +169,12 @@ export class RequestManager {
      * @private
      */
     async _runJob(job, route, service) {
-        const full_prompt = job.prompt; // ensure string input
+        let full_prompt = job.prompt; // ensure string input
+
+        // this is a little workaround to disable the thinking mode in qwen models
+        if (service.getModelName().includes("Qwen3")) {
+            full_prompt = full_prompt + "/no_think";
+        }
 
         let response, latencyMs, cleanedResponse; // response is object with .answer and .stats
         try {
