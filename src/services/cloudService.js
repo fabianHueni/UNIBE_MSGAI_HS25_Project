@@ -34,7 +34,7 @@ export class CloudService {
         // prepare payload with prompt              //TODO: set enableThinking to the same value as in onDeviceService. (false)
         const payload = {
             model: this.model,
-            max_tokens: 500,
+            max_tokens: 50,
             messages: [{role: 'user', content: prompt}]
         };
 
