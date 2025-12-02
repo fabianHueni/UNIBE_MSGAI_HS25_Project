@@ -252,7 +252,7 @@ function buildExperimentCSV(stats) {
     const lines = [];
 
     // Header
-    lines.push('dataset_item_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,f1_score,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
+    lines.push('dataset_item_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
 
     // Data rows
     stats.stats.results.forEach((result, index) => {
@@ -263,8 +263,7 @@ function buildExperimentCSV(stats) {
             (result.totalLatency || 0).toFixed(2),
             (result.queueingTime || 0).toFixed(2),
             (result.inferenceTime || 0).toFixed(2),
-            result.evalRes?.exactMatch || false,
-            (result.evalRes?.f1WordLevel || 0).toFixed(4),
+            result.evalRes?.exactMatch,
             `"${(result.job?.groundTruth || '').replace(/"/g, '""')}"`,
             `"${(result.text?.answer || '').replace(/"/g, '""')}"`,
             result.job.timestamps.jobStart || 0,
@@ -411,7 +410,6 @@ async function loadDeviceModel() {
 }
 
 function downloadStatsAsCSV() {
-
     // make the stats compatible with buildExperimentCSV method for reuse
     const stats = {
         experiment: {
@@ -462,12 +460,11 @@ function updateStats() {
             <div>
                 <h3>General Stats</h3>
                 <pre>
-Processed: ${s.count}
+Requests: ${s.count}
 Avg total latency: ${avgTotalLatency.toFixed(1)}ms
 Avg queueing time: ${avgQueueingTime.toFixed(1)}ms
 Avg inference time: ${avgInferenceTime.toFixed(1)}ms
 Avg correct: ${s.count ? (s.results.reduce((a, b) => a + (b.evalRes.exactMatch ? 1 : 0), 0) / s.count * 100).toFixed(1) : 0}%
-Recent evaluations: ${Math.min(10, s.results.length)}
                 </pre>
             </div>
             <div>
