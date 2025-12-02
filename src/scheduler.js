@@ -24,38 +24,55 @@ export class JobScheduler {
 
     /**
      * Start emitting jobs based on the selected pattern
-     * TODO: Implement different patterns to simulate
-     * TODO: Run different datasets instead of just simple prompts
-     * @param patternName
-     * @returns {Promise<void>}
+     * @param {string} patternName - The pattern to use
+     * @param {number} maxJobs - Maximum number of jobs to emit (defaults to Infinity)
+     * @returns {Promise<number>} - Number of jobs emitted
      */
-    async startPattern(patternName) {
+    async startPattern(patternName, maxJobs = Infinity) {
         this.running = true;
+        let jobsEmitted = 0;
 
-        // once per second until user stopp evaluation
+        if (maxJobs !== Infinity) {
+            console.log(`🚀 Starting limited run: ${maxJobs} jobs with pattern '${patternName}'`);
+        }
+
         if (patternName === 'once-per-sec') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
-                const item = this._dataset.shift(); //shift instead of pop for FIFO
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
+                const item = this._dataset.shift();
                 this._emit(item);
-                await sleep(1000);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    await sleep(1000);
+                }
             }
         } else if (patternName === 'every-ten-sec') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
                 const item = this._dataset.shift();
                 this._emit(item);
-                await sleep(10000);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    await sleep(10000);
+                }
             }
         } else if (patternName === 'exponential-arrival') {
-            let i = 0;
-            while (this._dataset.length > 0 && this.running) {
+            while (this._dataset.length > 0 && this.running && jobsEmitted < maxJobs) {
                 const item = this._dataset.shift();
                 this._emit(item);
-                const timeToNextArrival = this._generateInterarrivalTime(this._interArrivalTimeLambda);
-                await sleep(timeToNextArrival);
+                jobsEmitted++;
+                if (jobsEmitted < maxJobs && this._dataset.length > 0 && this.running) {
+                    const timeToNextArrival = this._generateExponentialInterarrivalTime(this._interArrivalTimeLambda);
+                    await sleep(timeToNextArrival);
+                }
             }
         }
+
+        if (maxJobs !== Infinity) {
+            console.log(`✅ Limited run complete: ${jobsEmitted} jobs emitted.`);
+        } else {
+            console.log(`🛑 Job emission stopped. Total jobs emitted: ${jobsEmitted}`);
+        }
+
+        return jobsEmitted;
     }
 
 
@@ -98,10 +115,11 @@ export class JobScheduler {
     _emit(item) {
         if (this._onJob) {
             const job = {
+                id: item.id,
                 prompt: item.prompt, 
                 groundTruth: item.groundTruth,
                 timestamps: {
-                    jobStart: performance.now(),
+                    jobStart: Date.now(),
                     inferenceStart: null,
                     inferenceEnd: null
                 }
@@ -141,15 +159,15 @@ export class JobScheduler {
                         }
                         fields.push(field);
                     }
-                    const [question, answer, context] = fields;
-                    
+                    const [id, question, answer, context] = fields;
+
                     // More explicit prompt to get concise answers
                     const full_prompt = `Question: ${question}
                                         Context: ${context}
                                         Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
                                         Answer:`;
                                         
-                    return {prompt: full_prompt, groundTruth: answer};
+                    return {id: id, prompt: full_prompt, groundTruth: answer};
                 });
                 console.log(`✅ Dataset '${name}' loaded with ${this._dataset.length} items.`);
             })
@@ -160,13 +178,13 @@ export class JobScheduler {
 
 
     /**
-     * Generate interarrival time based on exponential distribution
+     * Generate interarrival time based on exponential interarrival distribution (equals a poisson process)
      *
      * @param lambda - rate parameter (requests per second)
      * @returns {number} - interarrival time in milliseconds
      * @private
      */
-    _generateInterarrivalTime(lambda) {
+    _generateExponentialInterarrivalTime(lambda) {
         const u = Math.random(); // uniform random number between 0 and 1
         return -Math.log(u) / lambda * 1000; // convert to milliseconds
     }

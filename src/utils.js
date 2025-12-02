@@ -26,6 +26,7 @@ export function logTo(el, evt) {
     if (!el) return;
     const row = document.createElement('tr');
     row.innerHTML = `
+        <td>${evt.job.id}</td>
         <td>${new Date().toLocaleTimeString()}</td>
         <td>${evt.route}</td>
         <td>${evt.totalLatency?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>
@@ -37,4 +38,15 @@ export function logTo(el, evt) {
     `;
     el.appendChild(row);
     el.scrollTop = el.scrollHeight;
+}
+
+
+/**
+ * Approximates the number of words in a given text string
+ *
+ * @param text - Input text string
+ * @returns {number} - Approximate number of words
+ */
+export function getNumberOfWords(text) {
+    return text.trim().split(/\s+/).length;
 }
