@@ -190,7 +190,7 @@ function finishExperiment() {
     document.getElementById('startBtn').disabled = false;
     document.getElementById('stopBtn').disabled = true;
     document.getElementById('start1000Btn').disabled = false;
-    document.getElementById('start1000Btn').textContent = 'Start 1000';
+    document.getElementById('start1000Btn').textContent = 'Start 500';
 
     // Auto-download results
     setTimeout(() => {

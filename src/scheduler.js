@@ -130,6 +130,7 @@ export class JobScheduler {
 
     /**
      * Load the dataset from CSV file based on the given name
+     * If a comma appears inside a quote (context) it is not interpreted as a delimiter
      *
      * @param name - Name of the csv dataset to load without file extension
      * @private
@@ -145,20 +146,44 @@ export class JobScheduler {
                 return response.text();
             })
             .then(data => {
-                this._dataset = data.split('\n').slice(1).map(line => {
-                    // Properly parse CSV with quoted fields
-                    const regex = /("(?:[^"]|"")*"|[^,]*)(,|$)/g;
-                    const fields = [];
-                    let match;
-                    while ((match = regex.exec(line)) !== null) {
-                        if (match[2] === '' && match.index === line.length) break;
-                        let field = match[1];
-                        // Remove surrounding quotes and unescape double quotes
-                        if (field.startsWith('"') && field.endsWith('"')) {
-                            field = field.slice(1, -1).replace(/""/g, '"');
+                const lines = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+                // drop header
+                lines.shift();
+
+                this._dataset = lines
+                    .filter(l => l.trim().length > 0)
+                    .map(line => {
+                        // inline CSV parse with quotes support
+                        const fields = [];
+                        let cur = '';
+                        let inQuotes = false;
+
+                        for (let i = 0; i < line.length; i++) {
+                            const ch = line[i];
+                            if (inQuotes) { // if we are in a quote we just look for the quote ending
+                                if (ch === '"') {
+                                    // escaped quote ""
+                                    if (i + 1 < line.length && line[i + 1] === '"') {
+                                        cur += '"';
+                                        i++;
+                                    } else {
+                                        inQuotes = false;
+                                    }
+                                } else {
+                                    cur += ch;
+                                }
+                            } else {   // only if we are not in a quote we count the comma as e delimiter
+                                if (ch === ',') {
+                                    fields.push(cur);
+                                    cur = '';
+                                } else if (ch === '"') {
+                                    inQuotes = true;
+                                } else {
+                                    cur += ch;
+                                }
+                            }
                         }
-                        fields.push(field);
-                    }
+                        fields.push(cur);
                     const [id, question, answer, context] = fields;
 
                     // More explicit prompt to get concise answers
