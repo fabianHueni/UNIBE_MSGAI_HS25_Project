@@ -172,7 +172,7 @@ export class RequestManager {
         let full_prompt = job.prompt; // ensure string input
 
         // this is a little workaround to disable the thinking mode in qwen models
-        if (service.getModelName().includes("Qwen3")) {
+        if (service && service.getModelName() && service.getModelName().includes("Qwen3")) {
             full_prompt = full_prompt + "/no_think";
         }
 
