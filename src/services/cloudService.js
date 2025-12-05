@@ -83,6 +83,6 @@ export class CloudService {
      * @returns {string} - The name of the model as a string.
      */
     getModelName(){
-        return this.modelName;
+        return this.model;
     }
 }

@@ -172,8 +172,9 @@ export class RequestManager {
         let full_prompt = job.prompt; // ensure string input
 
         // this is a little workaround to disable the thinking mode in qwen models
-        if (service && service.getModelName() && service.getModelName().includes("Qwen3")) {
-            full_prompt = full_prompt + "/no_think";
+        if (service.getModelName().toLowerCase().includes("qwen3".toLowerCase())) {
+            full_prompt = full_prompt; // + "/no_think";
+            console.log("ℹ️ \"/no_think\" was added to the prompt to avoid thinking")
         }
 
         let response, latencyMs, cleanedResponse; // response is object with .answer and .stats
@@ -205,8 +206,13 @@ export class RequestManager {
         const evalRes = this.evaluator.evaluate(cleanedResponse, job.groundTruth, latencyMs);
         this._record(route, latencyMs, evalRes, job, cleanedResponse, {queueingTime, inferenceTime, totalLatency});
 
-        // logging the result
-        if (this.logger) this.logger({job, route, latency: latencyMs, evalRes, response: cleanedResponse, queueingTime, inferenceTime, totalLatency});
+        if (this.logger) {
+            try {
+                this.logger({job, route, latency: latencyMs, evalRes, response: cleanedResponse, queueingTime, inferenceTime, totalLatency});
+            } catch (error) {
+                console.error("Logger encountered an error:", error);
+            }
+        }
 
         // logging on console
         console.log("🎯 Models Answer: " + response.answer +
