@@ -471,6 +471,17 @@ def run_full_analysis(df_device, df_cloud, thresholds, tolerance_ms, cost_device
 
 
 
+
+
+
+
+
+
+
+
+
+
+
 ### functions below here are used for the queueing model and scheduler policy building ###
 
 import numpy as np
@@ -478,6 +489,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from scipy.stats import expon
+import random
+
 
 
 
@@ -666,5 +679,80 @@ def analyze_routing_mg1(df_device, df_cloud, thresholds):
             'rho_cloud': rho_cloud,
             'prob_offload': prob_cloud # Fraction sent to cloud
         })
+        
+    return pd.DataFrame(results)
+
+
+
+
+def simulate_routing_validation(df_device, df_cloud, thresholds, num_jobs=10000):
+    """
+    Discrete-event simulation to validate M/G/1 results.
+    Generates Poisson arrivals and samples service times from the empirical data.
+    """
+    # 1. Merge Dataframes to create a job pool
+    # We assume df_device already has the speedup applied to 'inference_time_ms'
+    merged_df = pd.merge(
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
+        df_cloud[['dataset_item_id', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
+        on='dataset_item_id', 
+        suffixes=('_dev', '_cloud')
+    )
+    
+    # 2. Determine System Arrival Rate (lambda)
+    # Use the original timestamps to determine the experiment duration and rate
+    start_ts = min(merged_df['job_start_ts_dev'].min(), merged_df['job_start_ts_cloud'].min())
+    end_ts = max(merged_df['inference_end_ts_dev'].max(), merged_df['inference_end_ts_cloud'].max())
+    duration_sec = (end_ts - start_ts) / 1000.0
+    lambda_total = len(merged_df) / duration_sec
+    
+    print(f"Simulation Lambda: {lambda_total:.4f} req/s | Simulating {num_jobs} jobs per threshold...")
+
+    # Pre-convert pools to seconds for speed
+    s_dev_pool = merged_df['inference_time_ms_dev'].values / 1000.0
+    s_cloud_pool = merged_df['inference_time_ms_cloud'].values / 1000.0
+    char_pool = merged_df['number_of_characters'].values
+    pool_size = len(merged_df)
+
+    results = []
+
+    for T in thresholds:
+        t_now = 0.0
+        server_free_dev = 0.0
+        server_free_cloud = 0.0
+        total_response_time = 0.0
+        
+        # Random seed for reproducibility per threshold
+        random.seed(42) 
+
+        for _ in range(num_jobs):
+            # A. Generate Arrival (Poisson Process)
+            inter_arrival = random.expovariate(lambda_total)
+            t_now += inter_arrival
+            
+            # B. Sample a Job (Bootstrap from empirical data)
+            idx = random.randint(0, pool_size - 1)
+            chars = char_pool[idx]
+            s_dev = s_dev_pool[idx]
+            s_cloud = s_cloud_pool[idx]
+            
+            # C. Routing Decision & Queue Simulation
+            if chars <= T:
+                # Route to Device
+                start_service = max(t_now, server_free_dev)
+                completion = start_service + s_dev
+                server_free_dev = completion
+                response = completion - t_now
+            else:
+                # Route to Cloud
+                start_service = max(t_now, server_free_cloud)
+                completion = start_service + s_cloud
+                server_free_cloud = completion
+                response = completion - t_now
+            
+            total_response_time += response
+
+        avg_latency = total_response_time / num_jobs
+        results.append({'threshold': T, 'sim_latency': avg_latency})
         
     return pd.DataFrame(results)
