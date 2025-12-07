@@ -1,8 +1,11 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+
+
 
 def scatterplot_inference_vs_accuracy(stats_dfs):
-    import matplotlib.pyplot as plt
-    import numpy as np
-
     # Extract data for plotting
     inference_times = []
     accuracies = []
@@ -45,9 +48,6 @@ def scatterplot_inference_vs_accuracy(stats_dfs):
 
 
 def plot_time_measure_distributions(df, model_name):
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-
     latency_metrics = {
         'total_latency_ms': [],
         'queueing_time_ms': [],
@@ -78,8 +78,6 @@ def plot_time_measure_distributions(df, model_name):
 
 
 def plot_time_measures_overlaid(experiment_data, labels):
-    import matplotlib.pyplot as plt
-    import seaborn as sns
     metrics = ['total_latency_ms', 'queueing_time_ms', 'inference_time_ms']
     
     # Set the style for seaborn
@@ -112,8 +110,6 @@ def plot_time_measures_overlaid(experiment_data, labels):
 
 
 def plot_characters_vs_inference_time(experiment_data, labels):
-    import matplotlib.pyplot as plt
-    import seaborn as sns
     # Set the style for seaborn
     sns.set(style="whitegrid")
 
@@ -322,4 +318,353 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
             'p_short': p_short
         })
 
+    return pd.DataFrame(results)
+
+
+def get_optimization_metrics(results_df, tolerance_ms):
+    """
+    Identifies the minimum latency point and the best point within the tolerance budget.
+    """
+    # 1. Find the point of minimum REAL latency (Performance)
+    min_latency_idx = results_df['avg_latency'].idxmin()
+    min_latency_threshold = results_df.loc[min_latency_idx, 'threshold']
+    min_latency_val = results_df.loc[min_latency_idx, 'avg_latency']
+    min_monetary = results_df.loc[min_latency_idx, 'monetary_cost']
+
+    # 2. Budget Constraint Logic
+    target_latency = min_latency_val + (tolerance_ms / 1000.0)
+
+    # Filter: valid latencies, within budget, and at least as much offloading as the fastest point
+    budget_candidates = results_df[
+        (results_df['avg_latency'] <= target_latency) & 
+        (results_df['threshold'] >= min_latency_threshold)
+    ]
+
+    if not budget_candidates.empty:
+        # Pick the largest threshold (max offloading) that fits the budget
+        budget_row = budget_candidates.loc[budget_candidates['threshold'].idxmax()]
+        budget_threshold = budget_row['threshold']
+        budget_latency = budget_row['avg_latency']
+        budget_monetary = budget_row['monetary_cost']
+    else:
+        budget_threshold = min_latency_threshold
+        budget_latency = min_latency_val
+        budget_monetary = min_monetary
+        
+    return {
+        'min_threshold': min_latency_threshold,
+        'min_latency': min_latency_val,
+        'min_cost': min_monetary,
+        'budget_threshold': budget_threshold,
+        'budget_latency': budget_latency,
+        'budget_cost': budget_monetary,
+        'target_latency': target_latency
+    }
+
+def plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, cost_cloud):
+    """
+    Plots the latency and cost curves with annotations for the optimal points.
+    """
+    fig, ax1 = plt.subplots(figsize=(10, 6))
+
+    # Unpack metrics for easier reading
+    min_thresh = metrics['min_threshold']
+    min_lat = metrics['min_latency']
+    bud_thresh = metrics['budget_threshold']
+    bud_lat = metrics['budget_latency']
+    target_lat = metrics['target_latency']
+
+    # 1. Plot the REAL latency curve (Left Axis)
+    ax1.plot(results_df['threshold'], results_df['avg_latency'], 
+             color='blue', linewidth=2, label='Actual System Latency')
+    ax1.set_xlabel('Character Threshold (Jobs <= T go to Device)')
+    ax1.set_ylabel('Average System Latency (s)', color='blue')
+    ax1.tick_params(axis='y', labelcolor='blue')
+    ax1.set_ylim(0.2, max(results_df['avg_latency'].min() * 3.5, 0.6)) 
+
+    # 2. Plot the Cost curve (Right Axis)
+    ax2 = ax1.twinx()
+    ax2.plot(results_df['threshold'], results_df['monetary_cost'], 
+             color='red', linestyle='--', linewidth=2, label='Monetary Cost ($)')
+    ax2.set_ylabel('Avg Cost per Request ($)', color='red')
+    ax2.tick_params(axis='y', labelcolor='red')
+
+    # 3. Mark the points (on Latency Axis)
+    ax1.scatter(min_thresh, min_lat, color='green', s=100, zorder=5, label=f'Fastest (T={min_thresh})')
+    ax1.scatter(bud_thresh, bud_lat, color='orange', s=120, marker='P', zorder=6, label=f'Max Budget (T={bud_thresh})')
+
+    # 4. Add reference lines
+    ax1.axhline(y=results_df.iloc[0]['avg_latency'], color='gray', linestyle=':', label='All Cloud Baseline')
+    ax1.axhline(y=target_lat, color='orange', linestyle='--', alpha=0.3, label=f'Tolerance Limit (+{tolerance_ms}ms)')
+    ax1.axvline(x=bud_thresh, color='orange', linestyle='--', alpha=0.5)
+
+    # 5. Annotate
+    latency_penalty = bud_lat - min_lat
+    ax1.annotate(f"Used Budget:\n+{latency_penalty*1000:.0f}ms / {tolerance_ms}ms",
+                 xy=(bud_thresh, bud_lat), 
+                 xytext=(bud_thresh - 400, bud_lat),
+                 arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-.2", color='orange'))
+
+    # 6. Combine Legends
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc='center right')
+
+    # 7. Add Cost Info Text
+    info_text = (f"Cost Settings:\n"
+                 f"Device: ${cost_device:.2f}/req\n"
+                 f"Cloud:  ${cost_cloud:.2f}/req")
+    ax1.text(0.02, 0.95, info_text, transform=ax1.transAxes, 
+             fontsize=10, verticalalignment='top', 
+             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    plt.title(f'Impact of Offloading Threshold on System Latency & Cost\n(Max Tolerance Budget: {tolerance_ms}ms)')
+    ax1.grid(True, alpha=0.3)
+    plt.show()
+
+def run_full_analysis(df_device, df_cloud, thresholds, tolerance_ms, cost_device, cost_cloud):
+    """
+    Orchestrates the calculation, metric extraction, and plotting.
+    """
+    # 1. Calculate Strategy
+    results_df = analyze_split_strategy(df_device, df_cloud, thresholds, 
+                                        tolerance_ms=tolerance_ms,
+                                        cost_device=cost_device,
+                                        cost_cloud=cost_cloud)
+    
+    # 2. Get Metrics
+    metrics = get_optimization_metrics(results_df, tolerance_ms)
+    
+    # 3. Plot
+    plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, cost_cloud)
+    
+    # 4. Print Analysis
+    print(f"--- Performance vs. Budget Analysis ---")
+    print(f"1. Fastest Configuration:")
+    print(f"   - Threshold: {metrics['min_threshold']} chars")
+    print(f"   - Latency:   {metrics['min_latency']:.4f} s")
+    print(f"   - Avg Cost:  ${metrics['min_cost']:.4f}")
+
+    print(f"\n2. Max Budget Configuration (Spending up to {tolerance_ms}ms):")
+    print(f"   - Threshold: {metrics['budget_threshold']} chars")
+    print(f"   - Latency:   {metrics['budget_latency']:.4f} s (+{(metrics['budget_latency']-metrics['min_latency'])*1000:.1f}ms)")
+    print(f"   - Avg Cost:  ${metrics['budget_cost']:.4f}")
+
+    savings = metrics['min_cost'] - metrics['budget_cost']
+    if savings > 0:
+        print(f"\n   -> You save ${savings:.4f} per request by using your latency budget.")
+    
+    return results_df, metrics
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### functions below here are used for the queueing model and scheduler policy building ###
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+from scipy.stats import expon
+
+
+
+
+
+def extract_basic_metrics(df, name="Server"):
+    """
+    Extracts basic queuing metrics from a raw experiment dataframe.
+    Uses columns: 'job_start_ts', 'inference_end_ts', 'inference_time_ms', 'total_latency_ms'
+    """
+    # Work on a copy to avoid modifying the original dataframe
+    df = df.copy()
+    df = df.sort_values('job_start_ts')
+    
+    # 1. Arrival Rate (Lambda)
+    # Total time window of the experiment (observed from first arrival to last completion)
+    start_time = df['job_start_ts'].min()
+    end_time = df['inference_end_ts'].max()
+    experiment_duration_sec = (end_time - start_time) / 1000.0
+    
+    num_requests = len(df)
+    arrival_rate = num_requests / experiment_duration_sec if experiment_duration_sec > 0 else 0
+    
+    # 2. Mean Service Demand (S_bar)
+    # inference_time_ms is the pure processing time (service time, no queueing)
+    service_times_sec = df['inference_time_ms'] / 1000.0
+    mean_service_demand = service_times_sec.mean()
+    
+    # 3. Empirical Response Time (R)
+    # total_latency_ms = inference_end_ts - job_start_ts (includes queueing + service)
+    response_times_sec = df['total_latency_ms'] / 1000.0
+    
+    mean_response_time = response_times_sec.mean()
+    p50_response = response_times_sec.median()
+    p95_response = response_times_sec.quantile(0.95)
+    p99_response = response_times_sec.quantile(0.99)
+
+    # 4. Utilization (rho)
+    # Utilization Law: rho = lambda * S
+    utilization = arrival_rate * mean_service_demand
+
+    print(f"--- Metrics for {name} ---")
+    print(f"  Count:                   {num_requests}")
+    print(f"  Duration:                {experiment_duration_sec:.2f} s")
+    print(f"  Arrival Rate (λ):        {arrival_rate:.4f} req/s")
+    print(f"  Mean Service Demand (S): {mean_service_demand:.4f} s")
+    print(f"  Mean Response Time (R):  {mean_response_time:.4f} s")
+    print(f"  Response Time P95:       {p95_response:.4f} s")
+    print(f"  Utilization (ρ = λ*S):   {utilization:.2%}")
+    print("-" * 30)
+    
+    return {
+        'lambda': arrival_rate,
+        'mean_service_time': mean_service_demand,
+        'mean_response_time': mean_response_time,
+        'p95_response_time': p95_response,
+        'utilization': utilization
+    }
+
+
+
+
+
+def plot_service_time_distribution(df, title):
+    # Extract service times (inference_time_ms) and convert to seconds
+    service_times = df['inference_time_ms'] / 1000.0
+    mean_service_time = service_times.mean()
+    
+    plt.figure(figsize=(10, 6))
+    sns.set_theme(style="whitegrid")
+    
+    # 1. Plot Histogram & KDE of Empirical Data
+    # stat="density" normalizes the histogram so it's comparable to the PDF
+    sns.histplot(service_times, bins=200, stat="density", kde=True, 
+                 color='skyblue', label='Empirical Data', alpha=0.5, edgecolor='white')
+    
+    # 2. Plot Theoretical Exponential Distribution
+    # The scale parameter for expon is the mean (1/lambda)
+    x = np.linspace(0, service_times.max(), 200)
+    y = expon.pdf(x, scale=mean_service_time)
+    
+    plt.plot(x, y, 'r--', lw=3, label=f'Exponential Fit (mean={mean_service_time:.2f}s)')
+    
+    plt.title(f'Service Time Distribution: {title}')
+    plt.xlabel('Service Time (s)')
+    plt.ylabel('Probability Density')
+    plt.legend()
+    plt.show()
+
+
+
+
+def calculate_mg1_response_time(arrival_rate, service_times_sec):
+    """
+    Calculates Mean Response Time E[R] using the Pollaczek-Khinchine formula.
+    E[R] = E[S] + (lambda * E[S^2]) / (2 * (1 - rho))
+    """
+    if len(service_times_sec) == 0:
+        return 0.0, 0.0
+
+    # 1. Estimate Moments from Samples
+    E_S = np.mean(service_times_sec)
+    E_S2 = np.mean(np.square(service_times_sec)) # Second raw moment E[S^2]
+    
+    # 2. Utilization
+    rho = arrival_rate * E_S
+    
+    # 3. Stability Check
+    if rho >= 1.0:
+        return float('inf'), rho
+        
+    # 4. Pollaczek-Khinchine Formula
+    # Mean Waiting Time in Queue
+    E_W = (arrival_rate * E_S2) / (2 * (1 - rho))
+    
+    # Mean Response Time (Service + Queue)
+    E_R = E_S + E_W
+    
+    return E_R, rho
+
+def analyze_routing_mg1(df_device, df_cloud, thresholds):
+    """
+    Simulates routing based on input character length thresholds using M/G/1 analytical models.
+    """
+    # 1. Merge Dataframes to align jobs (assuming dataset_item_id matches)
+    # We need to know what the service time WOULD be on device vs cloud for every job
+    merged_df = pd.merge(
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']], 
+        df_cloud[['dataset_item_id', 'inference_time_ms']], 
+        on='dataset_item_id', 
+        suffixes=('_dev', '_cloud')
+    )
+    
+    # Convert to seconds
+    merged_df['s_dev'] = merged_df['inference_time_ms_dev'] / 1000.0
+    merged_df['s_cloud'] = merged_df['inference_time_ms_cloud'] / 1000.0
+    
+    # 2. Determine Total System Arrival Rate (lambda_total)
+    # Estimate from the experiment duration
+    start_ts = min(df_device['job_start_ts'].min(), df_cloud['job_start_ts'].min())
+    end_ts = max(df_device['inference_end_ts'].max(), df_cloud['inference_end_ts'].max())
+    duration_sec = (end_ts - start_ts) / 1000.0
+    lambda_total = len(merged_df) / duration_sec
+    
+    print(f"System Lambda: {lambda_total:.4f} req/s (over {len(merged_df)} jobs)")
+    
+    results = []
+    
+    for T in thresholds:
+        # --- Traffic Split ---
+        # Jobs <= T go to Device, others to Cloud
+        mask_device = merged_df['number_of_characters'] <= T
+        
+        jobs_device = merged_df[mask_device]
+        jobs_cloud = merged_df[~mask_device]
+        
+        # --- Device Queue (M/G/1) ---
+        prob_dev = len(jobs_device) / len(merged_df)
+        lambda_dev = lambda_total * prob_dev
+        
+        if not jobs_device.empty:
+            r_dev, rho_dev = calculate_mg1_response_time(lambda_dev, jobs_device['s_dev'].values)
+        else:
+            r_dev, rho_dev = 0.0, 0.0
+            
+        # --- Cloud Queue (M/G/1) ---
+        prob_cloud = len(jobs_cloud) / len(merged_df)
+        lambda_cloud = lambda_total * prob_cloud
+        
+        if not jobs_cloud.empty:
+            r_cloud, rho_cloud = calculate_mg1_response_time(lambda_cloud, jobs_cloud['s_cloud'].values)
+        else:
+            r_cloud, rho_cloud = 0.0, 0.0
+            
+        # --- System Mean Response Time ---
+        # Weighted average of the two queues
+        if r_dev == float('inf') or r_cloud == float('inf'):
+            system_r = float('inf')
+        else:
+            system_r = (prob_dev * r_dev) + (prob_cloud * r_cloud)
+            
+        results.append({
+            'threshold': T,
+            'avg_latency': system_r,
+            'rho_dev': rho_dev,
+            'rho_cloud': rho_cloud,
+            'prob_offload': prob_cloud # Fraction sent to cloud
+        })
+        
     return pd.DataFrame(results)
