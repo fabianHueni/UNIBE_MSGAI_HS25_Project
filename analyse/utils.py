@@ -490,6 +490,7 @@ import pandas as pd
 import seaborn as sns
 from scipy.stats import expon
 import random
+from scipy import stats
 
 
 
@@ -552,6 +553,49 @@ def extract_basic_metrics(df, name="Server"):
 
 
 
+def plot_inter_arrival_distribution(df, dataset_name=""):
+    """
+    Plots the distribution of inter-arrival times to visualize the arrival process.
+    Compares empirical data against a theoretical Exponential distribution.
+    """
+    # Ensure sorted by start time to calculate correct deltas
+    df_sorted = df.sort_values('job_start_ts')
+    
+    # Calculate inter-arrival times in seconds
+    # Assuming job_start_ts is in milliseconds
+    inter_arrivals = df_sorted['job_start_ts'].diff().dropna() / 1000.0
+    
+    # Filter out large gaps (e.g., > 10x the median) that might be due to experiment pauses
+    # to keep the plot readable
+    median_ia = inter_arrivals.median()
+    if median_ia > 0:
+        inter_arrivals = inter_arrivals[inter_arrivals < median_ia * 10]
+
+    plt.figure(figsize=(10, 6))
+    
+    # Plot Empirical Histogram
+    sns.histplot(inter_arrivals, kde=True, bins=5, stat='density', label='Empirical Data', alpha=0.6)
+    
+    # Calculate stats
+    mean_ia = inter_arrivals.mean()
+    std_ia = inter_arrivals.std()
+    cv_ia = std_ia / mean_ia if mean_ia > 0 else 0
+    
+    # Plot Theoretical Exponential distribution (Poisson process) for comparison
+    if mean_ia > 0:
+        x = np.linspace(0, inter_arrivals.max(), 200)
+        # PDF of Exponential: lambda * exp(-lambda * x), where lambda = 1/mean
+        lam = 1 / mean_ia
+        y = lam * np.exp(-lam * x)
+        plt.plot(x, y, 'r--', linewidth=2, label=f'Theoretical Exponential (if Poisson)')
+    
+    plt.title(f'Inter-Arrival Time Distribution - {dataset_name}\n(CV = {cv_ia:.2f})')
+    plt.xlabel('Inter-Arrival Time (seconds)')
+    plt.ylabel('Density')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.show()
+
 
 
 def plot_service_time_distribution(df, title):
@@ -580,6 +624,116 @@ def plot_service_time_distribution(df, title):
     plt.legend()
     plt.show()
 
+
+
+def calculate_gg1_response_time(arrival_rate, service_times_sec, ca=1.0):
+    """
+    Calculates Mean Response Time E[R] using Kingman's Approximation for G/G/1.
+    
+    Args:
+        ca (float): Coefficient of Variation of inter-arrival times.
+                    ca=1.0 -> Poisson (M/G/1)
+                    ca=0.0 -> Deterministic (D/G/1)
+    """
+    if len(service_times_sec) == 0:
+        return 0.0, 0.0
+
+    # 1. Statistics
+    E_S = np.mean(service_times_sec)
+    Var_S = np.var(service_times_sec)
+    
+    # Coefficient of Variation of Service Time (Cs)
+    # Cs^2 = Var(S) / E[S]^2
+    if E_S > 0:
+        Cs2 = Var_S / (E_S**2)
+    else:
+        Cs2 = 0
+    
+    # 2. Utilization
+    rho = arrival_rate * E_S
+    
+    # 3. Stability Check
+    if rho >= 1.0:
+        return float('inf'), rho
+        
+    # 4. Kingman's Approximation for Waiting Time in Queue
+    # E[Wq] approx = (rho / (1-rho)) * ((Ca^2 + Cs^2) / 2) * E[S]
+    Ca2 = ca**2
+    E_W = (rho / (1 - rho)) * ((Ca2 + Cs2) / 2) * E_S
+    
+    # Mean Response Time (Service + Queue)
+    E_R = E_S + E_W
+    
+    return E_R, rho
+
+def analyze_routing_gg1(df_device, df_cloud, thresholds, ca=1.0):
+    """
+    Simulates routing using G/G/1 approximation (Kingman's Formula).
+    Allows adjusting arrival variability (ca).
+    """
+    # 1. Merge Dataframes
+    merged_df = pd.merge(
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']], 
+        df_cloud[['dataset_item_id', 'inference_time_ms']], 
+        on='dataset_item_id', 
+        suffixes=('_dev', '_cloud')
+    )
+    
+    # Convert to seconds
+    merged_df['s_dev'] = merged_df['inference_time_ms_dev'] / 1000.0
+    merged_df['s_cloud'] = merged_df['inference_time_ms_cloud'] / 1000.0
+    
+    # 2. Determine Total System Arrival Rate (CORRECTED)
+    # We use the duration of the device experiment ONLY to avoid the "time gap" bug.
+    start_ts = df_device['job_start_ts'].min()
+    end_ts = df_device['inference_end_ts'].max()
+    duration_sec = (end_ts - start_ts) / 1000.0
+    
+    # Estimate rate based on the merged dataset size over that duration
+    lambda_total = len(merged_df) / duration_sec
+    
+    print(f"G/G/1 Analysis | Lambda: {lambda_total:.4f} | Ca: {ca} (0=Det, 1=Exp)")
+    
+    results = []
+    
+    for T in thresholds:
+        # --- Traffic Split ---
+        mask_device = merged_df['number_of_characters'] <= T
+        jobs_device = merged_df[mask_device]
+        jobs_cloud = merged_df[~mask_device]
+        
+        # --- Device Queue ---
+        prob_dev = len(jobs_device) / len(merged_df)
+        lambda_dev = lambda_total * prob_dev
+        
+        if not jobs_device.empty:
+            r_dev, rho_dev = calculate_gg1_response_time(lambda_dev, jobs_device['s_dev'].values, ca=ca)
+        else:
+            r_dev, rho_dev = 0.0, 0.0
+            
+        # --- Cloud Queue ---
+        prob_cloud = len(jobs_cloud) / len(merged_df)
+        lambda_cloud = lambda_total * prob_cloud
+        
+        if not jobs_cloud.empty:
+            r_cloud, rho_cloud = calculate_gg1_response_time(lambda_cloud, jobs_cloud['s_cloud'].values, ca=ca)
+        else:
+            r_cloud, rho_cloud = 0.0, 0.0
+            
+        # --- System Mean Response Time ---
+        if r_dev == float('inf') or r_cloud == float('inf'):
+            system_r = float('inf')
+        else:
+            system_r = (prob_dev * r_dev) + (prob_cloud * r_cloud)
+            
+        results.append({
+            'threshold': T,
+            'avg_latency': system_r,
+            'rho_dev': rho_dev,
+            'rho_cloud': rho_cloud
+        })
+        
+    return pd.DataFrame(results)
 
 
 
@@ -685,13 +839,37 @@ def analyze_routing_mg1(df_device, df_cloud, thresholds):
 
 
 
-def simulate_routing_validation(df_device, df_cloud, thresholds, num_jobs=10000):
+def calculate_system_arrival_rate(df_device, df_cloud):
     """
-    Discrete-event simulation to validate M/G/1 results.
-    Generates Poisson arrivals and samples service times from the empirical data.
+    Calculates the system arrival rate (lambda) based on the intersection of jobs 
+    in device and cloud dataframes over the duration of the device experiment.
     """
-    # 1. Merge Dataframes to create a job pool
-    # We assume df_device already has the speedup applied to 'inference_time_ms'
+    # Merge to find intersection count
+    merged_df = pd.merge(
+        df_device[['dataset_item_id']], 
+        df_cloud[['dataset_item_id']], 
+        on='dataset_item_id'
+    )
+    
+    start_ts = df_device['job_start_ts'].min()
+    end_ts = df_device['inference_end_ts'].max()
+    duration_sec = (end_ts - start_ts) / 1000.0
+    
+    if duration_sec > 0:
+        return len(merged_df) / duration_sec
+    return 0.0
+
+
+def simulate_routing_validation(df_device, df_cloud, thresholds, lambda_total, num_jobs=10000, ca=1.0):
+    """
+    Discrete-event simulation for G/G/1 routing.
+    lambda_total: System arrival rate (requests per second).
+    ca: Coefficient of variation of inter-arrival times.
+        0.0 = Deterministic (D/G/1)
+        1.0 = Poisson/Exponential (M/G/1)
+        Other = Gamma distribution approximation
+    """
+    # 1. Merge Dataframes
     merged_df = pd.merge(
         df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
         df_cloud[['dataset_item_id', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
@@ -699,16 +877,11 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, num_jobs=10000)
         suffixes=('_dev', '_cloud')
     )
     
-    # 2. Determine System Arrival Rate (lambda)
-    # Use the original timestamps to determine the experiment duration and rate
-    start_ts = min(merged_df['job_start_ts_dev'].min(), merged_df['job_start_ts_cloud'].min())
-    end_ts = max(merged_df['inference_end_ts_dev'].max(), merged_df['inference_end_ts_cloud'].max())
-    duration_sec = (end_ts - start_ts) / 1000.0
-    lambda_total = len(merged_df) / duration_sec
+    mean_inter_arrival = 1.0 / lambda_total if lambda_total > 0 else 1.0
     
-    print(f"Simulation Lambda: {lambda_total:.4f} req/s | Simulating {num_jobs} jobs per threshold...")
+    print(f"Simulation Lambda: {lambda_total:.4f} req/s | Ca: {ca} | Simulating {num_jobs} jobs...")
 
-    # Pre-convert pools to seconds for speed
+    # Pre-convert pools
     s_dev_pool = merged_df['inference_time_ms_dev'].values / 1000.0
     s_cloud_pool = merged_df['inference_time_ms_cloud'].values / 1000.0
     char_pool = merged_df['number_of_characters'].values
@@ -722,15 +895,24 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, num_jobs=10000)
         server_free_cloud = 0.0
         total_response_time = 0.0
         
-        # Random seed for reproducibility per threshold
         random.seed(42) 
 
         for _ in range(num_jobs):
-            # A. Generate Arrival (Poisson Process)
-            inter_arrival = random.expovariate(lambda_total)
+            # A. Generate Arrival based on Ca
+            if ca == 0.0:
+                inter_arrival = mean_inter_arrival
+            elif ca == 1.0:
+                inter_arrival = random.expovariate(lambda_total)
+            else:
+                # Gamma distribution approximation for general Ca
+                # alpha = 1/ca^2, beta = mean / alpha
+                alpha = 1.0 / (ca**2)
+                beta = mean_inter_arrival / alpha
+                inter_arrival = random.gammavariate(alpha, beta)
+                
             t_now += inter_arrival
             
-            # B. Sample a Job (Bootstrap from empirical data)
+            # B. Sample a Job
             idx = random.randint(0, pool_size - 1)
             chars = char_pool[idx]
             s_dev = s_dev_pool[idx]
@@ -738,13 +920,110 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, num_jobs=10000)
             
             # C. Routing Decision & Queue Simulation
             if chars <= T:
-                # Route to Device
+                start_service = max(t_now, server_free_dev)
+                completion = start_service + s_dev
+                server_free_dev = completion
+                server_free_dev = completion
+                response = completion - t_now
+            else:
+                start_service = max(t_now, server_free_cloud)
+                completion = start_service + s_cloud
+                server_free_cloud = completion
+                response = completion - t_now
+            
+            total_response_time += response
+
+        avg_latency = total_response_time / num_jobs
+        results.append({'threshold': T, 'sim_latency': avg_latency})
+        
+    return pd.DataFrame(results)
+
+
+
+
+def estimate_linear_relationship(df, label="Model", plot=True):
+    """
+    Estimates the linear relationship between input characters and inference time.
+    Returns (slope, intercept, r_value).
+    """
+    x = df['number_of_characters']
+    y = df['inference_time_ms'] / 1000.0 # Convert to seconds for consistency with simulation
+    
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    
+    print(f"--- {label} ---")
+    print(f"Slope: {slope:.6f} s/char")
+    print(f"Intercept: {intercept:.6f} s")
+    print(f"R-squared: {r_value**2:.4f}")
+    
+    if plot:
+        plt.figure(figsize=(8, 5))
+        plt.scatter(x, y, alpha=0.3, label='Data Points')
+        plt.plot(x, slope * x + intercept, color='red', label=f'Fit: y={slope:.5f}x + {intercept:.3f}')
+        plt.xlabel('Input Characters')
+        plt.ylabel('Inference Time (s)')
+        plt.title(f'Linear Fit: {label}')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.show()
+        
+    return slope, intercept
+
+
+def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
+                               char_params=(500, 200), # (Mean, Std) for input chars
+                               dev_model=(0.001, 0.1), # (Slope, Intercept) for Device
+                               cloud_model=(0.0005, 0.05)): # (Slope, Intercept) for Cloud
+    """
+    Synthetic simulation that generates data on-the-fly using a linear model.
+    Service Time = Slope * Chars + Intercept + Noise
+    """
+    mean_inter_arrival = 1.0 / lambda_total if lambda_total > 0 else 1.0
+    results = []
+
+    # Unpack parameters
+    char_mu, char_sigma = char_params
+    slope_d, int_d = dev_model
+    slope_c, int_c = cloud_model
+
+    for T in thresholds:
+        t_now = 0.0
+        server_free_dev = 0.0
+        server_free_cloud = 0.0
+        total_response_time = 0.0
+        
+        random.seed(42) 
+
+        for _ in range(num_jobs):
+            # 1. Generate Arrival
+            if ca == 0.0:
+                inter_arrival = mean_inter_arrival
+            elif ca == 1.0:
+                inter_arrival = random.expovariate(lambda_total)
+            else:
+                alpha = 1.0 / (ca**2)
+                beta = mean_inter_arrival / alpha
+                inter_arrival = random.gammavariate(alpha, beta)
+            
+            t_now += inter_arrival
+            
+            # 2. Generate Synthetic Job (Correlated)
+            # Generate chars (ensure > 0)
+            chars = max(10, random.gauss(char_mu, char_sigma))
+            
+            # Calculate Service Times based on Linear Model + Random Noise
+            # Noise represents variability not explained by length
+            noise = random.gauss(0, 0.05) # 50ms noise
+            s_dev = max(0.01, (slope_d * chars + int_d) + noise)
+            s_cloud = max(0.01, (slope_c * chars + int_c) + noise)
+            
+            # 3. Routing & Queueing
+            if chars <= T:
                 start_service = max(t_now, server_free_dev)
                 completion = start_service + s_dev
                 server_free_dev = completion
                 response = completion - t_now
             else:
-                # Route to Cloud
                 start_service = max(t_now, server_free_cloud)
                 completion = start_service + s_cloud
                 server_free_cloud = completion
