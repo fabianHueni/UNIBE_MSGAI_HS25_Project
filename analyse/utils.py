@@ -71,7 +71,7 @@ def plot_time_measure_distributions(df, model_name):
         plt.xlabel(f'{metric} (ms)', fontsize=12)
         plt.ylabel('Frequency', fontsize=12)
         plt.title(f'Distribution of {metric} for \n {model_name}', fontsize=12, fontweight='bold')
-        plt.grid(axis='y', alpha=0.3)
+        plt.grid(axis='y', alpha=0.3) 
 
     plt.tight_layout()
     plt.show()
@@ -102,6 +102,7 @@ def plot_time_measures_overlaid(experiment_data, labels):
         plt.title(f'Distribution of {metric} \n Across Experiments', fontsize=12, fontweight='bold')
         plt.legend(title='Experiments', fontsize=12)
         plt.grid(axis='y', alpha=0.5)
+        plt.xlim(0,6000)
 
     plt.tight_layout()
     plt.show()
@@ -231,3 +232,94 @@ def fit_mmc_model(lambda_rate, mu_rates, c=2):
     print(f"Theoretical Avg Total Latency (W): {w:.4f} s")
     
     return w, wq
+
+
+
+def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost_device=0.0, cost_cloud=0.0):
+    """
+    Analyzes the performance of splitting traffic based on input character length.
+    
+    Args:
+        tolerance_ms: How many milliseconds of extra latency we are willing to tolerate 
+                      to keep a job on-device. (Subtracts this from device latency cost).
+        cost_device: Monetary/Resource cost per request for on-device.
+        cost_cloud: Monetary/Resource cost per request for cloud.
+    """
+    results = []
+
+    # 1. Combine data to simulate the full incoming stream
+    workload_df = device_df.copy()
+    
+    # Calculate total arrival rate of the system
+    workload_df = workload_df.sort_values('job_start_ts')
+    inter_arrival_times = workload_df['job_start_ts'].diff().dropna() / 1000.0
+    lambda_total = 1.0 / inter_arrival_times.mean()
+
+    for T in thresholds:
+        # --- Split the Workload ---
+        short_jobs = workload_df[workload_df['number_of_characters'] <= T]
+        long_jobs = workload_df[workload_df['number_of_characters'] > T]
+        
+        # Probability of being short/long
+        p_short = len(short_jobs) / len(workload_df)
+        p_long = 1.0 - p_short
+        
+        # Arrival rates for each subsystem
+        lambda_device = lambda_total * p_short
+        lambda_cloud = lambda_total * p_long
+        
+        # --- Estimate Service Rates (Mu) ---
+        if len(short_jobs) > 0:
+            mu_device = 1.0 / (short_jobs['inference_time_ms'].mean() / 1000.0)
+        else:
+            mu_device = 0 
+            
+        if len(long_jobs) > 0:
+            mu_cloud = 1.0 / (cloud_df['inference_time_ms'].mean() / 1000.0)
+        else:
+            mu_cloud = 0
+
+        # --- Calculate M/M/1 Metrics ---
+        # Device Queue
+        if lambda_device > 0 and mu_device > lambda_device:
+            W_device = 1.0 / (mu_device - lambda_device)
+        elif lambda_device == 0:
+            W_device = 0
+        else:
+            W_device = float('inf') # Unstable
+            
+        # Cloud Queue
+        if lambda_cloud > 0 and mu_cloud > lambda_cloud:
+            W_cloud = 1.0 / (mu_cloud - lambda_cloud)
+        elif lambda_cloud == 0:
+            W_cloud = 0
+        else:
+            W_cloud = float('inf') # Unstable
+            
+        # --- Weighted Average System Latency & Costs ---
+        if W_device == float('inf') or W_cloud == float('inf'):
+            avg_system_latency = float('inf')
+            adjusted_cost = float('inf')
+            monetary_cost = float('inf')
+        else:
+            avg_system_latency = p_short * W_device + p_long * W_cloud
+            
+            # Monetary Cost Calculation
+            monetary_cost = p_short * cost_device + p_long * cost_cloud
+
+            # Apply tolerance: We perceive on-device latency as "cheaper" by tolerance_ms
+            # Effective Cost = p_short * (W_device - tolerance) + p_long * W_cloud
+            perceived_device_latency = max(0, W_device - (tolerance_ms / 1000.0))
+            adjusted_cost = p_short * perceived_device_latency + p_long * W_cloud
+            
+        results.append({
+            'threshold': T,
+            'avg_latency': avg_system_latency,
+            'adjusted_cost': adjusted_cost,
+            'monetary_cost': monetary_cost,
+            'lambda_device': lambda_device,
+            'lambda_cloud': lambda_cloud,
+            'p_short': p_short
+        })
+
+    return pd.DataFrame(results)
