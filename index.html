@@ -22,58 +22,96 @@
 
     <section class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- Cloud Card -->
-        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
-            <h2 class="text-xl font-semibold mb-4">Cloud (OpenRouter)</h2>
-            <label class="block mb-4 text-sm font-medium">Model
-                <select id="cloudModel"
-                        class="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <option value="meta-llama/llama-3.2-1b-instruct">meta-llama/llama-3.2-1b-instruct</option>
-                    <option value="ibm-granite/granite-4.0-h-micro">ibm-granite/granite-4.0-h-micro</option>
-                    <option value="qwen/qwen3-4b:free">qwen/qwen3-4b</option>
-                    <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
-                    <option value="google/gemma-3n-e2b-it:free">google/gemma-3n-e2b-it:free</option>
-                    <option value="meta-llama/llama-3.2-3b-instruct">meta-llama/llama-3.2-3b-instruct</option>
-                </select>
-            </label>
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 flex flex-col">
+            <div>
+                <h2 class="text-xl font-semibold mb-4">Cloud (OpenRouter)</h2>
+                <label class="block mb-4 text-sm font-medium">Model
+                    <select id="cloudModel"
+                            class="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value="meta-llama/llama-3.2-1b-instruct">meta-llama/llama-3.2-1b-instruct</option>
+                        <option value="ibm-granite/granite-4.0-h-micro">ibm-granite/granite-4.0-h-micro</option>
+                        <option value="qwen/qwen3-4b:free">qwen/qwen3-4b</option>
+                        <option value="openai/gpt-4o-mini">openai/gpt-4o-mini</option>
+                        <option value="google/gemma-3n-e2b-it:free">google/gemma-3n-e2b-it:free</option>
+                        <option value="meta-llama/llama-3.2-3b-instruct">meta-llama/llama-3.2-3b-instruct</option>
+                    </select>
+                </label>
 
-            <label class="block mb-4 text-sm font-medium">API Key OpenRouter
-                <input id="cloudApiKey" type="text" placeholder="Key..."
-                       class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
-            </label>
+                <label class="block mb-4 text-sm font-medium">API Key OpenRouter
+                    <input id="cloudApiKey" type="text" placeholder="Key..."
+                           class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                </label>
+            </div>
 
-
+            <div class="mt-auto">
+                <h3 class="text-lg font-semibold mt-4 mb-2">Linear Model for JSEQ (cloud)</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium">Slope (ms/char)
+                            <input id="cloudSlope" type="number" step="0.001" value="0.092"
+                                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Intercept (ms)
+                            <input id="cloudIntercept" type="number" step="1" value="471.355"
+                                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                        </label>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- On-Device Card -->
-        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200">
-            <h2 class="text-xl font-semibold mb-4">On-Device</h2>
+        <div class="bg-white p-6 rounded-2xl shadow-xl border border-gray-200 flex flex-col">
+            <div>
+                <h2 class="text-xl font-semibold mb-4">On-Device</h2>
 
-            <label class="block text-sm font-medium">Model (transformers.js)
-                <select id="deviceModel"
-                        class="w-full mb-2 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
-                    <option value='{"modelName": "onnx-community/gemma-3-270m-it-ONNX", "quantization": "fp32"}'>gemma-3-270m-it-ONNX (fp32)</option>
-                    <option value='{"modelName": "onnx-community/granite-4.0-350m-ONNX-web", "quantization": "fp32"}'>granite-4.0-350m-ONNX-web (fp32)</option>
-                    <option value='{"modelName": "onnx-community/Llama-3.2-1B-Instruct-ONNX", "quantization": "fp32"}'>Llama-3.2-1B-Instruct-ONNX (fp32)</option>
-                    <option value='{"modelName": "onnx-community/granite-4.0-micro-ONNX-web", "quantization": "q4f16"}'>granite-4.0-micro-ONNX-web (q4f16, 3B)</option>
-                    <option value='{"modelName": "onnx-community/Qwen3-4B-ONNX", "quantization": "q4f16"}'>Qwen3-4B-ONNX (q4f16)</option>
-<!--                    <option disabled value='{"modelName": "onnx-community/Qwen3-0.6B-ONNX", "quantization": "fp32"}'>Qwen3-0.6B-ONNX</option>
-                    <option disabled value='{"modelName": "onnx-community/gemma-3-1b-it-ONNX-GQA", "quantization": "q4f16"}'>gemma-3-1b-it-ONNX-GQA (q4f16)</option>
-                    <option disabled value='{"modelName": "onnx-community/Llama-3.2-3B-Instruct-ONNX", "quantization": "fp32"}'>Llama-3.2-3B-Instruct-ONNX (not
-                        working)
-                    </option>
-                    <option disabled value='{"modelName": "onnx-community/gemma-3-1b-it-ONNX", "quantization": "fp32"}'>gemma-3-1b-it-ONNX (fp32)</option>-->
-                </select>
-            </label>
+                <label class="block text-sm font-medium">Model (transformers.js)
+                    <select id="deviceModel"
+                            class="w-full mb-2 px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        <option value='{"modelName": "onnx-community/gemma-3-270m-it-ONNX", "quantization": "fp32"}'>gemma-3-270m-it-ONNX (fp32)</option>
+                        <option value='{"modelName": "onnx-community/granite-4.0-350m-ONNX-web", "quantization": "fp32"}'>granite-4.0-350m-ONNX-web (fp32)</option>
+                        <option value='{"modelName": "onnx-community/Llama-3.2-1B-Instruct-ONNX", "quantization": "fp32"}'>Llama-3.2-1B-Instruct-ONNX (fp32)</option>
+                        <option value='{"modelName": "onnx-community/granite-4.0-micro-ONNX-web", "quantization": "q4f16"}'>granite-4.0-micro-ONNX-web (q4f16, 3B)</option>
+                        <option value='{"modelName": "onnx-community/Qwen3-4B-ONNX", "quantization": "q4f16"}'>Qwen3-4B-ONNX (q4f16)</option>
+    <!--                    <option disabled value='{"modelName": "onnx-community/Qwen3-0.6B-ONNX", "quantization": "fp32"}'>Qwen3-0.6B-ONNX</option>
+                        <option disabled value='{"modelName": "onnx-community/gemma-3-1b-it-ONNX-GQA", "quantization": "q4f16"}'>gemma-3-1b-it-ONNX-GQA (q4f16)</option>
+                        <option disabled value='{"modelName": "onnx-community/Llama-3.2-3B-Instruct-ONNX", "quantization": "fp32"}'>Llama-3.2-3B-Instruct-ONNX (not
+                            working)
+                        </option>
+                        <option disabled value='{"modelName": "onnx-community/gemma-3-1b-it-ONNX", "quantization": "fp32"}'>gemma-3-1b-it-ONNX (fp32)</option>-->
+                    </select>
+                </label>
 
-            <button id="loadDeviceModelBtn"
-                    class="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">Load Model
-            </button>
+                <button id="loadDeviceModelBtn"
+                        class="mt-4 w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition">Load Model
+                </button>
 
-            <div id="deviceStatus" class="text-gray-700 text-sm my-4">Not loaded</div>
+                <div id="deviceStatus" class="text-gray-700 text-sm my-4">Not loaded</div>
 
-            <div id="deviceLoadingContainer" class="w-full max-w-xs my-2">
-                <div id="deviceLoadingBar" class="h-2 bg-green-500 transition-all duration-200 w-0"></div>
-                <span id="deviceLoadingText" class="text-xs text-gray-600"></span>
+                <div id="deviceLoadingContainer" class="w-full max-w-xs my-2">
+                    <div id="deviceLoadingBar" class="h-2 bg-green-500 transition-all duration-200 w-0"></div>
+                    <span id="deviceLoadingText" class="text-xs text-gray-600"></span>
+                </div>
+            </div>
+        
+            <div class="mt-auto">
+                <h3 class="text-lg font-semibold mt-4 mb-2">Linear Model for JSEQ (on-device)</h3>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium">Slope (ms/char)
+                            <input id="deviceSlope" type="number" step="0.001" value="0.508"
+                                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                        </label>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium">Intercept (ms)
+                            <input id="deviceIntercept" type="number" step="1" value="-51.748"
+                                   class="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500 focus:outline-none"/>
+                        </label>
+                    </div>
+                </div>
             </div>
 
         </div>
