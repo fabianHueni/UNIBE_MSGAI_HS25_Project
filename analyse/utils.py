@@ -491,6 +491,8 @@ import seaborn as sns
 from scipy.stats import expon
 import random
 from scipy import stats
+import time
+from collections import deque
 
 
 
@@ -1035,3 +1037,133 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
         results.append({'threshold': T, 'sim_latency': avg_latency})
         
     return pd.DataFrame(results)
+
+
+
+
+
+def recommend_routing_decision(input_length, current_lambda, char_params, dev_model, cloud_model, ca=1.0):
+    """
+    Determines whether to route to 'Device' or 'Cloud' based on input length and system load.
+    
+    It finds the optimal threshold for the given lambda by simulating the system 
+    (using the synthetic model) and picking the threshold with minimum latency.
+    """
+    # Define search space for thresholds (coarse search for speed in this interactive function)
+    # Optimization: Step size of 100 instead of 1 to speed up the loop significantly
+    search_thresholds = range(0, 2000, 10)
+    
+    # Run simulation to find optimal curve
+    # Optimization: num_jobs=500 instead of 2000+ for faster execution
+    sim_res = simulate_routing_synthetic(
+        search_thresholds, 
+        current_lambda, 
+        num_jobs=500, 
+        ca=ca, 
+        char_params=char_params, 
+        dev_model=dev_model, 
+        cloud_model=cloud_model
+    )
+    
+    # Find threshold with minimum latency
+    # Filter out infinite latencies (unstable system)
+    valid_res = sim_res[sim_res['sim_latency'] != float('inf')]
+    
+    if valid_res.empty:
+        # If system is overloaded at all thresholds, default to Cloud (usually has higher capacity)
+        return "Cloud (System Overloaded)", 0, float('inf')
+        
+    best_row = valid_res.loc[valid_res['sim_latency'].idxmin()]
+    optimal_threshold = best_row['threshold']
+    min_latency = best_row['sim_latency']
+    
+    decision = "Device" if input_length <= optimal_threshold else "Cloud"
+    
+    return decision, optimal_threshold, min_latency
+
+class TrafficRateEstimator:
+    def __init__(self, window_size_seconds=5.0):
+        self.window_size = window_size_seconds
+        self.timestamps = deque()
+
+    def register_request(self):
+        """Call this whenever a new request arrives."""
+        now = time.time()
+        self.timestamps.append(now)
+        self._cleanup(now)
+
+    def get_current_lambda(self):
+        """Returns the estimated requests per second (lambda)."""
+        now = time.time()
+        self._cleanup(now)
+        
+        if not self.timestamps:
+            return 0.0
+            
+        # FIX: Use the actual duration of data we have, capped at window_size
+        # This gives correct rates immediately, even during startup
+        oldest_timestamp = self.timestamps[0]
+        duration = now - oldest_timestamp
+        
+        # Use the actual duration, but prevent division by zero or tiny intervals
+        # We use a minimum of 0.5s to avoid extreme spikes for the very first request
+        effective_window = max(duration, 0.5)
+            
+        return len(self.timestamps) / effective_window
+
+    def _cleanup(self, current_time):
+        """Remove timestamps older than the window size."""
+        while self.timestamps and (current_time - self.timestamps[0] > self.window_size):
+            self.timestamps.popleft()
+
+
+
+class StatefulScheduler:
+    def __init__(self, dev_model, cloud_model):
+        """
+        Initializes the scheduler with performance models for device and cloud.
+        Models are tuples of (slope, intercept).
+        """
+        self.dev_slope_s = dev_model[0]
+        self.dev_intercept_s = dev_model[1]
+        
+        self.cloud_slope_s = cloud_model[0]
+        self.cloud_intercept_s = cloud_model[1]
+
+        self.device_free_at = 0.0  # Time in seconds
+        self.cloud_free_at = 0.0   # Time in seconds
+
+    def _predict_inference_time_s(self, input_len, slope_s, intercept_s):
+        """Predicts inference time in seconds based on a linear model."""
+        # Formula: y = mx + b, where all units are in seconds.
+        predicted_time_s = slope_s * input_len + intercept_s
+        return max(0, predicted_time_s)
+
+    def decide_at_time(self, input_len, arrival_time):
+        """
+        Decides where to route a request based on which queue will finish it earlier.
+        All time calculations are done in seconds.
+        """
+        # Predict service time for the new job on both servers
+        dev_service_time = self._predict_inference_time_s(input_len, self.dev_slope_s, self.dev_intercept_s)
+        cloud_service_time = self._predict_inference_time_s(input_len, self.cloud_slope_s, self.cloud_intercept_s)
+
+        # When would the job START on each server? (It can't start before it arrives)
+        dev_start_time = max(arrival_time, self.device_free_at)
+        cloud_start_time = max(arrival_time, self.cloud_free_at)
+
+        # When would the job FINISH on each server?
+        dev_finish_time = dev_start_time + dev_service_time
+        cloud_finish_time = cloud_start_time + cloud_service_time
+
+        # JSEQ Policy: Join the queue with the earliest finish time
+        if dev_finish_time <= cloud_finish_time:
+            decision = "Device"
+            # Update the time when the device server will become free
+            self.device_free_at = dev_finish_time
+            return decision, dev_start_time, dev_finish_time
+        else:
+            decision = "Cloud"
+            # Update the time when the cloud server will become free
+            self.cloud_free_at = cloud_finish_time
+            return decision, cloud_start_time, cloud_finish_time
