@@ -1119,51 +1119,84 @@ class TrafficRateEstimator:
 
 
 class StatefulScheduler:
-    def __init__(self, dev_model, cloud_model):
+    """
+    A stateful scheduler that uses the 'Join the Shortest Expected Queue' (JSEQ) policy.
+    It keeps track of when each server (device and cloud) will be free and routes
+    incoming requests to the server that is predicted to finish the job first.
+    """
+    def __init__(self, dev_model, cloud_model, force_policy=None):
         """
-        Initializes the scheduler with performance models for device and cloud.
-        Models are tuples of (slope, intercept).
-        """
-        self.dev_slope_s = dev_model[0]
-        self.dev_intercept_s = dev_model[1]
+        Initializes the scheduler.
         
-        self.cloud_slope_s = cloud_model[0]
-        self.cloud_intercept_s = cloud_model[1]
-
-        self.device_free_at = 0.0  # Time in seconds
-        self.cloud_free_at = 0.0   # Time in seconds
-
-    def _predict_inference_time_s(self, input_len, slope_s, intercept_s):
-        """Predicts inference time in seconds based on a linear model."""
-        # Formula: y = mx + b, where all units are in seconds.
-        predicted_time_s = slope_s * input_len + intercept_s
-        return max(0, predicted_time_s)
-
-    def decide_at_time(self, input_len, arrival_time):
+        Args:
+            dev_model (tuple): A tuple (slope, intercept) for the device's performance model.
+            cloud_model (tuple): A tuple (slope, intercept) for the cloud's performance model.
+            force_policy (str, optional): If set to 'device' or 'cloud', all decisions
+                                          will be forced to that route. Defaults to None.
         """
-        Decides where to route a request based on which queue will finish it earlier.
-        All time calculations are done in seconds.
+        self.dev_model = dev_model
+        self.cloud_model = cloud_model
+        self.device_free_at = 0.0
+        self.cloud_free_at = 0.0
+        
+        # Validate and store the forced policy
+        if force_policy and force_policy not in ['device', 'cloud']:
+            raise ValueError("force_policy must be 'device', 'cloud', or None.")
+        self.force_policy = force_policy
+
+    def _predict_service_time(self, size, model):
         """
-        # Predict service time for the new job on both servers
-        dev_service_time = self._predict_inference_time_s(input_len, self.dev_slope_s, self.dev_intercept_s)
-        cloud_service_time = self._predict_inference_time_s(input_len, self.cloud_slope_s, self.cloud_intercept_s)
+        Predicts the service time in seconds for a given job size.
+        The model (slope, intercept) is assumed to predict a result in milliseconds.
+        """
+        slope, intercept = model
+        predicted_s = slope * size + intercept
+        return max(0.0, predicted_s)
 
-        # When would the job START on each server? (It can't start before it arrives)
-        dev_start_time = max(arrival_time, self.device_free_at)
-        cloud_start_time = max(arrival_time, self.cloud_free_at)
+    def decide_at_time(self, size, arrival_time):
+        """
+        Makes a routing decision for a new request based on the JSEQ policy.
+        """
+        # --- Start of new logic ---
+        # If a policy is forced, bypass JSEQ logic and route directly.
+        if self.force_policy == 'device':
+            return self.route_to_device(size, arrival_time)
+        if self.force_policy == 'cloud':
+            return self.route_to_cloud(size, arrival_time)
+        # --- End of new logic ---
 
-        # When would the job FINISH on each server?
-        dev_finish_time = dev_start_time + dev_service_time
-        cloud_finish_time = cloud_start_time + cloud_service_time
+        # Original JSEQ logic
+        # Predict service times for both options
+        st_dev = self._predict_service_time(size, self.dev_model)
+        st_cloud = self._predict_service_time(size, self.cloud_model)
 
-        # JSEQ Policy: Join the queue with the earliest finish time
-        if dev_finish_time <= cloud_finish_time:
-            decision = "Device"
-            # Update the time when the device server will become free
-            self.device_free_at = dev_finish_time
-            return decision, dev_start_time, dev_finish_time
+        # Calculate when each server would start and finish this job
+        start_dev = max(arrival_time, self.device_free_at)
+        finish_dev = start_dev + st_dev
+
+        start_cloud = max(arrival_time, self.cloud_free_at)
+        finish_cloud = start_cloud + st_cloud
+
+        # Decide which path is faster and update the state of that server
+        if finish_dev <= finish_cloud:
+            self.device_free_at = finish_dev
+            return "Device", start_dev, finish_dev
         else:
-            decision = "Cloud"
-            # Update the time when the cloud server will become free
-            self.cloud_free_at = cloud_finish_time
-            return decision, cloud_start_time, cloud_finish_time
+            self.cloud_free_at = finish_cloud
+            return "Cloud", start_cloud, finish_cloud
+
+    def route_to_device(self, size, arrival_time):
+        """Routes a job to the device and returns its stats."""
+        st_dev = self._predict_service_time(size, self.dev_model)
+        start_dev = max(arrival_time, self.device_free_at)
+        finish_dev = start_dev + st_dev
+        self.device_free_at = finish_dev
+        return "Device", start_dev, finish_dev
+
+    def route_to_cloud(self, size, arrival_time):
+        """Routes a job to the cloud and returns its stats."""
+        st_cloud = self._predict_service_time(size, self.cloud_model)
+        start_cloud = max(arrival_time, self.cloud_free_at)
+        finish_cloud = start_cloud + st_cloud
+        self.cloud_free_at = finish_cloud
+        return "Cloud", start_cloud, finish_cloud
