@@ -246,7 +246,7 @@ export class RequestManager {
 
         if (this.logger) {
             try {
-                this.logger({job, route, latency: latencyMs, evalRes, response: cleanedResponse, queueingTime, inferenceTime, totalLatency});
+                this.logger({job, route, latency: latencyMs, evalRes, response: cleanedResponse.answer, queueingTime, inferenceTime, totalLatency});
             } catch (error) {
                 console.error("Logger encountered an error:", error);
             }
