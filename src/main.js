@@ -22,10 +22,15 @@ const evaluator = new Evaluator();
 
 
 const requestManager = new RequestManager({
-    deviceService: onDeviceInferenceService, cloudService: cloudInferenceService, evaluator, logger: evt => {
+    deviceService: onDeviceInferenceService,
+    cloudService: cloudInferenceService,
+    evaluator,
+    logger: evt => {
         logTo(logEl, evt);
         updateStats();
-    }
+    },
+    devicePerfModel: {slope: 0.508, intercept: -51.748},
+    cloudPerfModel: {slope: 0.092, intercept: 471.355}
 });
 
 

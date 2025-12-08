@@ -10,6 +10,7 @@ import {measureAsync, sleep} from './utils.js';
  * - always_device: all requests go to device
  * - probabilistic: each request goes to cloud with a defined probability
  * - roundrobin: requests alternate between cloud and device
+ * - jseq: routes to the server with the shortest expected queue time (Join the Shortest Expected Queue)
  *
  *
  */
@@ -20,7 +21,9 @@ export class RequestManager {
                     evaluator,
                     logger = null,
                     routeStrategy = 'roundrobin',
-                    cloudProb = 0.5
+                    cloudProb = 0.5,
+                    devicePerfModel = {slope: 0, intercept: 0},
+                    cloudPerfModel = {slope: 0, intercept: 0}
                 } = {}) {
 
         /**
@@ -55,6 +58,30 @@ export class RequestManager {
          * @type {number}
          */
         this.cloudProb = cloudProb;
+
+        /**
+         * Performance model for the device {slope, intercept}
+         * @type {{slope: number, intercept: number}}
+         */
+        this.devicePerfModel = devicePerfModel;
+
+        /**
+         * Performance model for the cloud {slope, intercept}
+         * @type {{slope: number, intercept: number}}
+         */
+        this.cloudPerfModel = cloudPerfModel;
+
+        /**
+         * Tracks when the device will be free
+         * @type {number}
+         */
+        this.deviceFinishTime = 0;
+
+        /**
+         * Tracks when the cloud will be free
+         * @type {number}
+         */
+        this.cloudFinishTime = 0;
 
         /**
          * Internal round robin counter (even = cloud, odd = device)
@@ -109,10 +136,14 @@ export class RequestManager {
      *
      * @param routeStrategy - New routing strategy
      * @param cloudProb - New cloud probability for 'probabilistic' strategy
+     * @param devicePerfModel
+     * @param cloudPerfModel
      */
-    updateRouting({routeStrategy, cloudProb}) {
+    updateRouting({routeStrategy, cloudProb, devicePerfModel, cloudPerfModel}) {
         if (routeStrategy) this.routeStrategy = routeStrategy;
         if (cloudProb !== undefined) this.cloudProb = cloudProb;
+        if (devicePerfModel) this.devicePerfModel = devicePerfModel;
+        if (cloudPerfModel) this.cloudPerfModel = cloudPerfModel;
     }
 
 
@@ -199,8 +230,15 @@ export class RequestManager {
         const inferenceTime = job.timestamps.inferenceEnd - job.timestamps.inferenceStart;
         const totalLatency = job.timestamps.inferenceEnd - job.timestamps.jobStart;
 
+        // update finish time for JSEQ
+        if (route === 'device') {
+            this.deviceFinishTime = job.timestamps.inferenceEnd;
+        } else {
+            this.cloudFinishTime = job.timestamps.inferenceEnd;
+        }
+
         // clean response
-        cleanedResponse = this._stripThinkingTokens(response);
+        cleanedResponse = this._cleanResponse(response.answer);
 
         // evaluate result and store results
         const evalRes = this.evaluator.evaluate(cleanedResponse, job.groundTruth, latencyMs);
@@ -229,23 +267,59 @@ export class RequestManager {
     }
 
     /**
-     * Choose the route for the given job based on the routing strategy.
+     * Choose a route based on the configured strategy.
      *
-     * TODO: extend routing to be based on the job characteristics (e.g., prompt length, expected latency, etc.)
-     *
-     * @param job - The job object (not used in current strategies, could be used for more advanced routing)
-     * @returns {string|string}
+     * @returns {string} 'cloud' or 'device'
      * @private
      */
     _choose(job) {
-        if (this.routeStrategy === 'always_cloud') return 'cloud';
-        if (this.routeStrategy === 'always_device') return 'device';
-        if (this.routeStrategy === 'probabilistic') return Math.random() < this.cloudProb ? 'cloud' : 'device';
-        // default round robin
-        this._rrCounter++;
-        return (this._rrCounter % 2 === 0) ? 'cloud' : 'device';
+        switch (this.routeStrategy) {
+            case 'always_cloud':
+                return 'cloud';
+            case 'always_device':
+                return 'device';
+            case 'probabilistic':
+                return Math.random() < this.cloudProb ? 'cloud' : 'device';
+            case 'roundrobin':
+                this._rrCounter++;
+                return this._rrCounter % 2 === 0 ? 'cloud' : 'device';
+            case 'jseq':
+                return this._decideJSEQ(job);
+            default:
+                return 'device';
+        }
     }
 
+    /**
+     * Decide route based on Join the Shortest Expected Queue (JSEQ) policy.
+     *
+     * @param job
+     * @returns {string}
+     * @private
+     */
+    _decideJSEQ(job) {
+        const now = Date.now();
+        const input_size = job.prompt.length;
+
+        // Predict inference time for both services
+        const device_predicted_inference_time = this.devicePerfModel.intercept + this.devicePerfModel.slope * input_size;
+        const cloud_predicted_inference_time = this.cloudPerfModel.intercept + this.cloudPerfModel.slope * input_size;
+
+        // Calculate when each server will be free
+        const device_free_at = Math.max(now, this.deviceFinishTime);
+        const cloud_free_at = Math.max(now, this.cloudFinishTime);
+
+        // Calculate expected finish time for the new job on both servers
+        const device_expected_finish_time = device_free_at + device_predicted_inference_time;
+        const cloud_expected_finish_time = cloud_free_at + cloud_predicted_inference_time;
+
+        // Choose the server with the earlier expected finish time
+        if (device_expected_finish_time <= cloud_expected_finish_time) {
+            return 'device';
+        } else {
+            return 'cloud';
+        }
+    }
 
     /**
      * Record statistics for the given job evaluation.
@@ -286,7 +360,7 @@ export class RequestManager {
      * @return {object|string} - Cleaned response object or original error string
      * @private
      */
-    _stripThinkingTokens(response) {
+    _cleanResponse(response) {
         // If response is an error string, return as-is
         if (typeof response === 'string' && response.startsWith('__error__')) {
             return response;
