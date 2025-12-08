@@ -22,7 +22,10 @@ const evaluator = new Evaluator();
 
 
 const requestManager = new RequestManager({
-    deviceService: onDeviceInferenceService, cloudService: cloudInferenceService, evaluator, logger: evt => {
+    deviceService: onDeviceInferenceService,
+    cloudService: cloudInferenceService,
+    evaluator,
+    logger: evt => {
         logTo(logEl, evt);
         updateStats();
     }
@@ -61,9 +64,17 @@ document.getElementById('startBtn').addEventListener('click', async () => {
     const pattern = document.getElementById('patternSelect').value;
     const routeStrategy = document.getElementById('routeStrategy').value;
     const cloudProb = parseFloat(document.getElementById('cloudProb').value);
+    const devicePerfModel = {
+        slope: parseFloat(document.getElementById('deviceSlope').value),
+        intercept: parseFloat(document.getElementById('deviceIntercept').value)
+    };
+    const cloudPerfModel = {
+        slope: parseFloat(document.getElementById('cloudSlope').value),
+        intercept: parseFloat(document.getElementById('cloudIntercept').value)
+    };
 
     // update request manager routing strategy
-    requestManager.updateRouting({routeStrategy, cloudProb});
+    requestManager.updateRouting({routeStrategy, cloudProb, devicePerfModel, cloudPerfModel});
 
     // starting is only available when model is loaded
     if (routeStrategy !== 'always_cloud' && !onDeviceInferenceService.isReady()) {
