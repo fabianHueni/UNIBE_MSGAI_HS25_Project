@@ -71,7 +71,7 @@ def plot_time_measure_distributions(df, model_name):
         plt.xlabel(f'{metric} (ms)', fontsize=12)
         plt.ylabel('Frequency', fontsize=12)
         plt.title(f'Distribution of {metric} for \n {model_name}', fontsize=12, fontweight='bold')
-        plt.grid(axis='y', alpha=0.3) 
+        plt.grid(axis='y', alpha=0.3)
 
     plt.tight_layout()
     plt.show()
@@ -106,34 +106,155 @@ def plot_time_measures_overlaid(experiment_data, labels):
     plt.show()
 
 
+def plot_inference_time_distribution(experiment_data, labels, model_names):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
 
-
-
-def plot_characters_vs_inference_time(experiment_data, labels):
     # Set the style for seaborn
     sns.set(style="whitegrid")
 
-    plt.figure(figsize=(7, 4))
+    fig, axes = plt.subplots(nrows=len(experiment_data), ncols=len(experiment_data[0]), figsize=(14, 10))
+    for j, (model_experiments, model_labels, model_name) in enumerate(zip(experiment_data, labels, model_names)):
+        colors = sns.color_palette("husl", len(experiment_data))  # Use seaborn color palette
 
-    # Loop through each DataFrame and plot
-    for df, label in zip(experiment_data, labels):
-        if 'number_of_characters' in df.columns and 'inference_time_ms' in df.columns:
-            plt.scatter(df['number_of_characters'], df['inference_time_ms'], alpha=0.5, label=label)
+        # take the maximum of all experiments for consistent x limit
+        max_x_limit = max([df['inference_time_ms'].quantile(0.98) for df in model_experiments])
 
-    plt.title('Inference Time vs Number of Input Characters', fontsize=12)
-    plt.xlabel('Number of Input Characters', fontsize=12)
-    plt.ylabel('Inference Time (ms)', fontsize=12)
-    plt.grid()
-    plt.legend(title='Experiments', fontsize=10)
+
+        # Loop through each DataFrame and plot
+        for i, (df, label) in enumerate(zip(model_experiments, model_labels)):
+            sns.histplot(df['inference_time_ms'].dropna(), bins=50, color=colors[j], label=f'{label}', alpha=0.6, kde=True, ax=axes[i][j])
+
+            if i == 0:
+                axes[i][j].set_title(model_name, fontsize=12)
+                axes[i][j].set_xlabel('', fontsize=12)
+            elif i == len(model_experiments) - 1:
+                axes[i][j].set_xlabel('Inference Time (ms)', fontsize=12)
+            else:
+                axes[i][j].set_title('', fontsize=12)
+                axes[i][j].set_xlabel('', fontsize=12)
+            if j == 0:
+                axes[i][j].set_ylabel('Frequency', fontsize=12)
+            else:
+                axes[i][j].set_ylabel('', fontsize=12)
+
+            axes[i][j].grid()
+            axes[i][j].legend(fontsize=10)
+
+            # Set consistent x and y limits for better comparison
+            axes[i][j].set_xlim(0, max_x_limit)
+            axes[i][j].set_ylim(0, None)
+
+    # remove not used subplots
+    fig.delaxes(axes[3][2])
+    fig.delaxes(axes[3][3])
+
+
+    fig.suptitle('Distribution of Inference Time over Model and Devices', fontsize=20)
     plt.tight_layout()
+
+    # save plot as png
+    plt.savefig('./plots/inference_time_distribution.png', dpi=300)
+
     plt.show()
 
+
+
+
+def plot_warm_up_phase(experiment_data, labels, model_names):
+    # Set the style for seaborn
+    sns.set(style="whitegrid")
+
+    fig, axes = plt.subplots(nrows=len(experiment_data), ncols=len(experiment_data[0]), figsize=(14, 10))
+
+    for j, (model_experiments, model_labels, model_name) in enumerate(zip(experiment_data, labels, model_names)):
+        colors = sns.color_palette("husl", len(experiment_data))  # Use seaborn color palette
+
+
+        # Loop through each DataFrame and plot
+        for i, (df, label) in enumerate(zip(model_experiments, model_labels)):
+            df_sorted = df.sort_values('job_start_ts').reset_index(drop=True)
+            # calculate moving average over 3 samples
+            df_sorted['inference_time_ms'] = df_sorted['inference_time_ms'].rolling(window=5).mean()
+
+            first_20 = df_sorted.head(20)
+            axes[i][j].plot(first_20.index, first_20['inference_time_ms'], marker='o', linestyle='-', color=colors[i], label=f'{label}')
+            axes[i][j].set_title(f'Warmup Effect - {label}')
+            axes[i][j].set_xlabel('Sample Index')
+            axes[i][j].set_ylabel('Inference Time (ms)')
+            axes[i][j].grid(True, alpha=0.3)
+
+
+            if i == 0:
+                axes[i][j].set_title(model_name, fontsize=12)
+                axes[i][j].set_xlabel('', fontsize=12)
+            elif i == len(model_experiments) - 1:
+                axes[i][j].set_xlabel('Inference Time (ms)', fontsize=12)
+            else:
+                axes[i][j].set_title('', fontsize=12)
+                axes[i][j].set_xlabel('', fontsize=12)
+            if j == 0:
+                axes[i][j].set_ylabel('Frequency', fontsize=12)
+            else:
+                axes[i][j].set_ylabel('', fontsize=12)
+
+            axes[i][j].grid()
+            axes[i][j].legend(fontsize=10)
+
+
+    # remove not used subplots
+    fig.delaxes(axes[3][2])
+    fig.delaxes(axes[3][3])
+
+
+    fig.suptitle('Distribution of Inference Time over Model and Devices', fontsize=20)
+    plt.tight_layout()
+
+    # save plot as png
+    plt.savefig('./plots/inference_time_distribution.png', dpi=300)
+
+    plt.show()
+
+
+
+
+def plot_characters_vs_inference_time(experiment_data, labels, model_names):
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+    # Set the style for seaborn
+    sns.set(style="whitegrid")
+
+    fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(14, 10))
+    axes_flat = axes.flatten()
+    for ax, model_experiments, model_labels, model_name in zip(axes_flat, experiment_data, labels, model_names):
+
+        # Loop through each DataFrame and plot
+        for df, label in zip(model_experiments, model_labels):
+            if 'number_of_characters' in df.columns and 'inference_time_ms' in df.columns:
+                # generate a size vector to set all sizes to 1 for better visibility
+                size = np.ones(len(df)) * 5
+                ax.scatter(df['number_of_characters'], df['inference_time_ms'], alpha=0.6, label=label, sizes=size)
+
+        ax.set_title(model_name, fontsize=12)
+        ax.set_xlabel('Number of Input Characters', fontsize=12)
+        ax.set_ylabel('Inference Time (ms)', fontsize=12)
+        ax.grid()
+        ax.legend(title='Experiments', fontsize=10)
+
+    fig.suptitle('Inference Time vs. Input Characters', fontsize=20)
+    plt.tight_layout()
+
+    # save plot as png
+    plt.savefig('./plots/characters_vs_inference_time.png', dpi=300)
+
+    plt.show()
+
+def calc_correlation_characters_inference(experiment_data, labels):
     # Calculate and print correlation for each DataFrame
     for df, label in zip(experiment_data, labels):
         correlation = df['number_of_characters'].corr(df['inference_time_ms'])
         print(f'Correlation between number of characters and inference time for {label}: {correlation}')
-
-
 
 
 def fit_mm1_model(df):
@@ -234,9 +355,9 @@ def fit_mmc_model(lambda_rate, mu_rates, c=2):
 def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost_device=0.0, cost_cloud=0.0):
     """
     Analyzes the performance of splitting traffic based on input character length.
-    
+
     Args:
-        tolerance_ms: How many milliseconds of extra latency we are willing to tolerate 
+        tolerance_ms: How many milliseconds of extra latency we are willing to tolerate
                       to keep a job on-device. (Subtracts this from device latency cost).
         cost_device: Monetary/Resource cost per request for on-device.
         cost_cloud: Monetary/Resource cost per request for cloud.
@@ -245,7 +366,7 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
 
     # 1. Combine data to simulate the full incoming stream
     workload_df = device_df.copy()
-    
+
     # Calculate total arrival rate of the system
     workload_df = workload_df.sort_values('job_start_ts')
     inter_arrival_times = workload_df['job_start_ts'].diff().dropna() / 1000.0
@@ -255,21 +376,21 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
         # --- Split the Workload ---
         short_jobs = workload_df[workload_df['number_of_characters'] <= T]
         long_jobs = workload_df[workload_df['number_of_characters'] > T]
-        
+
         # Probability of being short/long
         p_short = len(short_jobs) / len(workload_df)
         p_long = 1.0 - p_short
-        
+
         # Arrival rates for each subsystem
         lambda_device = lambda_total * p_short
         lambda_cloud = lambda_total * p_long
-        
+
         # --- Estimate Service Rates (Mu) ---
         if len(short_jobs) > 0:
             mu_device = 1.0 / (short_jobs['inference_time_ms'].mean() / 1000.0)
         else:
-            mu_device = 0 
-            
+            mu_device = 0
+
         if len(long_jobs) > 0:
             mu_cloud = 1.0 / (cloud_df['inference_time_ms'].mean() / 1000.0)
         else:
@@ -283,7 +404,7 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
             W_device = 0
         else:
             W_device = float('inf') # Unstable
-            
+
         # Cloud Queue
         if lambda_cloud > 0 and mu_cloud > lambda_cloud:
             W_cloud = 1.0 / (mu_cloud - lambda_cloud)
@@ -291,7 +412,7 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
             W_cloud = 0
         else:
             W_cloud = float('inf') # Unstable
-            
+
         # --- Weighted Average System Latency & Costs ---
         if W_device == float('inf') or W_cloud == float('inf'):
             avg_system_latency = float('inf')
@@ -299,7 +420,7 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
             monetary_cost = float('inf')
         else:
             avg_system_latency = p_short * W_device + p_long * W_cloud
-            
+
             # Monetary Cost Calculation
             monetary_cost = p_short * cost_device + p_long * cost_cloud
 
@@ -307,7 +428,7 @@ def analyze_split_strategy(device_df, cloud_df, thresholds, tolerance_ms=0, cost
             # Effective Cost = p_short * (W_device - tolerance) + p_long * W_cloud
             perceived_device_latency = max(0, W_device - (tolerance_ms / 1000.0))
             adjusted_cost = p_short * perceived_device_latency + p_long * W_cloud
-            
+
         results.append({
             'threshold': T,
             'avg_latency': avg_system_latency,
@@ -336,7 +457,7 @@ def get_optimization_metrics(results_df, tolerance_ms):
 
     # Filter: valid latencies, within budget, and at least as much offloading as the fastest point
     budget_candidates = results_df[
-        (results_df['avg_latency'] <= target_latency) & 
+        (results_df['avg_latency'] <= target_latency) &
         (results_df['threshold'] >= min_latency_threshold)
     ]
 
@@ -350,7 +471,7 @@ def get_optimization_metrics(results_df, tolerance_ms):
         budget_threshold = min_latency_threshold
         budget_latency = min_latency_val
         budget_monetary = min_monetary
-        
+
     return {
         'min_threshold': min_latency_threshold,
         'min_latency': min_latency_val,
@@ -375,16 +496,16 @@ def plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, c
     target_lat = metrics['target_latency']
 
     # 1. Plot the REAL latency curve (Left Axis)
-    ax1.plot(results_df['threshold'], results_df['avg_latency'], 
+    ax1.plot(results_df['threshold'], results_df['avg_latency'],
              color='blue', linewidth=2, label='Actual System Latency')
     ax1.set_xlabel('Character Threshold (Jobs <= T go to Device)')
     ax1.set_ylabel('Average System Latency (s)', color='blue')
     ax1.tick_params(axis='y', labelcolor='blue')
-    ax1.set_ylim(0.2, max(results_df['avg_latency'].min() * 3.5, 0.6)) 
+    ax1.set_ylim(0.2, max(results_df['avg_latency'].min() * 3.5, 0.6))
 
     # 2. Plot the Cost curve (Right Axis)
     ax2 = ax1.twinx()
-    ax2.plot(results_df['threshold'], results_df['monetary_cost'], 
+    ax2.plot(results_df['threshold'], results_df['monetary_cost'],
              color='red', linestyle='--', linewidth=2, label='Monetary Cost ($)')
     ax2.set_ylabel('Avg Cost per Request ($)', color='red')
     ax2.tick_params(axis='y', labelcolor='red')
@@ -401,7 +522,7 @@ def plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, c
     # 5. Annotate
     latency_penalty = bud_lat - min_lat
     ax1.annotate(f"Used Budget:\n+{latency_penalty*1000:.0f}ms / {tolerance_ms}ms",
-                 xy=(bud_thresh, bud_lat), 
+                 xy=(bud_thresh, bud_lat),
                  xytext=(bud_thresh - 400, bud_lat),
                  arrowprops=dict(arrowstyle="->", connectionstyle="arc3,rad=-.2", color='orange'))
 
@@ -414,8 +535,8 @@ def plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, c
     info_text = (f"Cost Settings:\n"
                  f"Device: ${cost_device:.2f}/req\n"
                  f"Cloud:  ${cost_cloud:.2f}/req")
-    ax1.text(0.02, 0.95, info_text, transform=ax1.transAxes, 
-             fontsize=10, verticalalignment='top', 
+    ax1.text(0.02, 0.95, info_text, transform=ax1.transAxes,
+             fontsize=10, verticalalignment='top',
              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.title(f'Impact of Offloading Threshold on System Latency & Cost\n(Max Tolerance Budget: {tolerance_ms}ms)')
@@ -427,17 +548,17 @@ def run_full_analysis(df_device, df_cloud, thresholds, tolerance_ms, cost_device
     Orchestrates the calculation, metric extraction, and plotting.
     """
     # 1. Calculate Strategy
-    results_df = analyze_split_strategy(df_device, df_cloud, thresholds, 
+    results_df = analyze_split_strategy(df_device, df_cloud, thresholds,
                                         tolerance_ms=tolerance_ms,
                                         cost_device=cost_device,
                                         cost_cloud=cost_cloud)
-    
+
     # 2. Get Metrics
     metrics = get_optimization_metrics(results_df, tolerance_ms)
-    
+
     # 3. Plot
     plot_latency_cost_analysis(results_df, metrics, tolerance_ms, cost_device, cost_cloud)
-    
+
     # 4. Print Analysis
     print(f"--- Performance vs. Budget Analysis ---")
     print(f"1. Fastest Configuration:")
@@ -453,7 +574,7 @@ def run_full_analysis(df_device, df_cloud, thresholds, tolerance_ms, cost_device
     savings = metrics['min_cost'] - metrics['budget_cost']
     if savings > 0:
         print(f"\n   -> You save ${savings:.4f} per request by using your latency budget.")
-    
+
     return results_df, metrics
 
 
@@ -507,25 +628,25 @@ def extract_basic_metrics(df, name="Server"):
     # Work on a copy to avoid modifying the original dataframe
     df = df.copy()
     df = df.sort_values('job_start_ts')
-    
+
     # 1. Arrival Rate (Lambda)
     # Total time window of the experiment (observed from first arrival to last completion)
     start_time = df['job_start_ts'].min()
     end_time = df['inference_end_ts'].max()
     experiment_duration_sec = (end_time - start_time) / 1000.0
-    
+
     num_requests = len(df)
     arrival_rate = num_requests / experiment_duration_sec if experiment_duration_sec > 0 else 0
-    
+
     # 2. Mean Service Demand (S_bar)
     # inference_time_ms is the pure processing time (service time, no queueing)
     service_times_sec = df['inference_time_ms'] / 1000.0
     mean_service_demand = service_times_sec.mean()
-    
+
     # 3. Empirical Response Time (R)
     # total_latency_ms = inference_end_ts - job_start_ts (includes queueing + service)
     response_times_sec = df['total_latency_ms'] / 1000.0
-    
+
     mean_response_time = response_times_sec.mean()
     p50_response = response_times_sec.median()
     p95_response = response_times_sec.quantile(0.95)
@@ -544,7 +665,7 @@ def extract_basic_metrics(df, name="Server"):
     print(f"  Response Time P95:       {p95_response:.4f} s")
     print(f"  Utilization (ρ = λ*S):   {utilization:.2%}")
     print("-" * 30)
-    
+
     return {
         'lambda': arrival_rate,
         'mean_service_time': mean_service_demand,
@@ -562,11 +683,11 @@ def plot_inter_arrival_distribution(df, dataset_name=""):
     """
     # Ensure sorted by start time to calculate correct deltas
     df_sorted = df.sort_values('job_start_ts')
-    
+
     # Calculate inter-arrival times in seconds
     # Assuming job_start_ts is in milliseconds
     inter_arrivals = df_sorted['job_start_ts'].diff().dropna() / 1000.0
-    
+
     # Filter out large gaps (e.g., > 10x the median) that might be due to experiment pauses
     # to keep the plot readable
     median_ia = inter_arrivals.median()
@@ -574,15 +695,15 @@ def plot_inter_arrival_distribution(df, dataset_name=""):
         inter_arrivals = inter_arrivals[inter_arrivals < median_ia * 10]
 
     plt.figure(figsize=(10, 6))
-    
+
     # Plot Empirical Histogram
     sns.histplot(inter_arrivals, kde=True, bins=5, stat='density', label='Empirical Data', alpha=0.6)
-    
+
     # Calculate stats
     mean_ia = inter_arrivals.mean()
     std_ia = inter_arrivals.std()
     cv_ia = std_ia / mean_ia if mean_ia > 0 else 0
-    
+
     # Plot Theoretical Exponential distribution (Poisson process) for comparison
     if mean_ia > 0:
         x = np.linspace(0, inter_arrivals.max(), 200)
@@ -590,7 +711,7 @@ def plot_inter_arrival_distribution(df, dataset_name=""):
         lam = 1 / mean_ia
         y = lam * np.exp(-lam * x)
         plt.plot(x, y, 'r--', linewidth=2, label=f'Theoretical Exponential (if Poisson)')
-    
+
     plt.title(f'Inter-Arrival Time Distribution - {dataset_name}\n(CV = {cv_ia:.2f})')
     plt.xlabel('Inter-Arrival Time (seconds)')
     plt.ylabel('Density')
@@ -604,22 +725,22 @@ def plot_service_time_distribution(df, title):
     # Extract service times (inference_time_ms) and convert to seconds
     service_times = df['inference_time_ms'] / 1000.0
     mean_service_time = service_times.mean()
-    
+
     plt.figure(figsize=(10, 6))
     sns.set_theme(style="whitegrid")
-    
+
     # 1. Plot Histogram & KDE of Empirical Data
     # stat="density" normalizes the histogram so it's comparable to the PDF
-    sns.histplot(service_times, bins=200, stat="density", kde=True, 
+    sns.histplot(service_times, bins=200, stat="density", kde=True,
                  color='skyblue', label='Empirical Data', alpha=0.5, edgecolor='white')
-    
+
     # 2. Plot Theoretical Exponential Distribution
     # The scale parameter for expon is the mean (1/lambda)
     x = np.linspace(0, service_times.max(), 200)
     y = expon.pdf(x, scale=mean_service_time)
-    
+
     plt.plot(x, y, 'r--', lw=3, label=f'Exponential Fit (mean={mean_service_time:.2f}s)')
-    
+
     plt.title(f'Service Time Distribution: {title}')
     plt.xlabel('Service Time (s)')
     plt.ylabel('Probability Density')
@@ -631,7 +752,7 @@ def plot_service_time_distribution(df, title):
 def calculate_gg1_response_time(arrival_rate, service_times_sec, ca=1.0):
     """
     Calculates Mean Response Time E[R] using Kingman's Approximation for G/G/1.
-    
+
     Args:
         ca (float): Coefficient of Variation of inter-arrival times.
                     ca=1.0 -> Poisson (M/G/1)
@@ -643,29 +764,29 @@ def calculate_gg1_response_time(arrival_rate, service_times_sec, ca=1.0):
     # 1. Statistics
     E_S = np.mean(service_times_sec)
     Var_S = np.var(service_times_sec)
-    
+
     # Coefficient of Variation of Service Time (Cs)
     # Cs^2 = Var(S) / E[S]^2
     if E_S > 0:
         Cs2 = Var_S / (E_S**2)
     else:
         Cs2 = 0
-    
+
     # 2. Utilization
     rho = arrival_rate * E_S
-    
+
     # 3. Stability Check
     if rho >= 1.0:
         return float('inf'), rho
-        
+
     # 4. Kingman's Approximation for Waiting Time in Queue
     # E[Wq] approx = (rho / (1-rho)) * ((Ca^2 + Cs^2) / 2) * E[S]
     Ca2 = ca**2
     E_W = (rho / (1 - rho)) * ((Ca2 + Cs2) / 2) * E_S
-    
+
     # Mean Response Time (Service + Queue)
     E_R = E_S + E_W
-    
+
     return E_R, rho
 
 def analyze_routing_gg1(df_device, df_cloud, thresholds, ca=1.0):
@@ -675,66 +796,66 @@ def analyze_routing_gg1(df_device, df_cloud, thresholds, ca=1.0):
     """
     # 1. Merge Dataframes
     merged_df = pd.merge(
-        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']], 
-        df_cloud[['dataset_item_id', 'inference_time_ms']], 
-        on='dataset_item_id', 
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']],
+        df_cloud[['dataset_item_id', 'inference_time_ms']],
+        on='dataset_item_id',
         suffixes=('_dev', '_cloud')
     )
-    
+
     # Convert to seconds
     merged_df['s_dev'] = merged_df['inference_time_ms_dev'] / 1000.0
     merged_df['s_cloud'] = merged_df['inference_time_ms_cloud'] / 1000.0
-    
+
     # 2. Determine Total System Arrival Rate (CORRECTED)
     # We use the duration of the device experiment ONLY to avoid the "time gap" bug.
     start_ts = df_device['job_start_ts'].min()
     end_ts = df_device['inference_end_ts'].max()
     duration_sec = (end_ts - start_ts) / 1000.0
-    
+
     # Estimate rate based on the merged dataset size over that duration
     lambda_total = len(merged_df) / duration_sec
-    
+
     print(f"G/G/1 Analysis | Lambda: {lambda_total:.4f} | Ca: {ca} (0=Det, 1=Exp)")
-    
+
     results = []
-    
+
     for T in thresholds:
         # --- Traffic Split ---
         mask_device = merged_df['number_of_characters'] <= T
         jobs_device = merged_df[mask_device]
         jobs_cloud = merged_df[~mask_device]
-        
+
         # --- Device Queue ---
         prob_dev = len(jobs_device) / len(merged_df)
         lambda_dev = lambda_total * prob_dev
-        
+
         if not jobs_device.empty:
             r_dev, rho_dev = calculate_gg1_response_time(lambda_dev, jobs_device['s_dev'].values, ca=ca)
         else:
             r_dev, rho_dev = 0.0, 0.0
-            
+
         # --- Cloud Queue ---
         prob_cloud = len(jobs_cloud) / len(merged_df)
         lambda_cloud = lambda_total * prob_cloud
-        
+
         if not jobs_cloud.empty:
             r_cloud, rho_cloud = calculate_gg1_response_time(lambda_cloud, jobs_cloud['s_cloud'].values, ca=ca)
         else:
             r_cloud, rho_cloud = 0.0, 0.0
-            
+
         # --- System Mean Response Time ---
         if r_dev == float('inf') or r_cloud == float('inf'):
             system_r = float('inf')
         else:
             system_r = (prob_dev * r_dev) + (prob_cloud * r_cloud)
-            
+
         results.append({
             'threshold': T,
             'avg_latency': system_r,
             'rho_dev': rho_dev,
             'rho_cloud': rho_cloud
         })
-        
+
     return pd.DataFrame(results)
 
 
@@ -750,21 +871,21 @@ def calculate_mg1_response_time(arrival_rate, service_times_sec):
     # 1. Estimate Moments from Samples
     E_S = np.mean(service_times_sec)
     E_S2 = np.mean(np.square(service_times_sec)) # Second raw moment E[S^2]
-    
+
     # 2. Utilization
     rho = arrival_rate * E_S
-    
+
     # 3. Stability Check
     if rho >= 1.0:
         return float('inf'), rho
-        
+
     # 4. Pollaczek-Khinchine Formula
     # Mean Waiting Time in Queue
     E_W = (arrival_rate * E_S2) / (2 * (1 - rho))
-    
+
     # Mean Response Time (Service + Queue)
     E_R = E_S + E_W
-    
+
     return E_R, rho
 
 def analyze_routing_mg1(df_device, df_cloud, thresholds):
@@ -774,60 +895,60 @@ def analyze_routing_mg1(df_device, df_cloud, thresholds):
     # 1. Merge Dataframes to align jobs (assuming dataset_item_id matches)
     # We need to know what the service time WOULD be on device vs cloud for every job
     merged_df = pd.merge(
-        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']], 
-        df_cloud[['dataset_item_id', 'inference_time_ms']], 
-        on='dataset_item_id', 
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms']],
+        df_cloud[['dataset_item_id', 'inference_time_ms']],
+        on='dataset_item_id',
         suffixes=('_dev', '_cloud')
     )
-    
+
     # Convert to seconds
     merged_df['s_dev'] = merged_df['inference_time_ms_dev'] / 1000.0
     merged_df['s_cloud'] = merged_df['inference_time_ms_cloud'] / 1000.0
-    
+
     # 2. Determine Total System Arrival Rate (lambda_total)
     # Estimate from the experiment duration
     start_ts = min(df_device['job_start_ts'].min(), df_cloud['job_start_ts'].min())
     end_ts = max(df_device['inference_end_ts'].max(), df_cloud['inference_end_ts'].max())
     duration_sec = (end_ts - start_ts) / 1000.0
     lambda_total = len(merged_df) / duration_sec
-    
+
     print(f"System Lambda: {lambda_total:.4f} req/s (over {len(merged_df)} jobs)")
-    
+
     results = []
-    
+
     for T in thresholds:
         # --- Traffic Split ---
         # Jobs <= T go to Device, others to Cloud
         mask_device = merged_df['number_of_characters'] <= T
-        
+
         jobs_device = merged_df[mask_device]
         jobs_cloud = merged_df[~mask_device]
-        
+
         # --- Device Queue (M/G/1) ---
         prob_dev = len(jobs_device) / len(merged_df)
         lambda_dev = lambda_total * prob_dev
-        
+
         if not jobs_device.empty:
             r_dev, rho_dev = calculate_mg1_response_time(lambda_dev, jobs_device['s_dev'].values)
         else:
             r_dev, rho_dev = 0.0, 0.0
-            
+
         # --- Cloud Queue (M/G/1) ---
         prob_cloud = len(jobs_cloud) / len(merged_df)
         lambda_cloud = lambda_total * prob_cloud
-        
+
         if not jobs_cloud.empty:
             r_cloud, rho_cloud = calculate_mg1_response_time(lambda_cloud, jobs_cloud['s_cloud'].values)
         else:
             r_cloud, rho_cloud = 0.0, 0.0
-            
+
         # --- System Mean Response Time ---
         # Weighted average of the two queues
         if r_dev == float('inf') or r_cloud == float('inf'):
             system_r = float('inf')
         else:
             system_r = (prob_dev * r_dev) + (prob_cloud * r_cloud)
-            
+
         results.append({
             'threshold': T,
             'avg_latency': system_r,
@@ -835,7 +956,7 @@ def analyze_routing_mg1(df_device, df_cloud, thresholds):
             'rho_cloud': rho_cloud,
             'prob_offload': prob_cloud # Fraction sent to cloud
         })
-        
+
     return pd.DataFrame(results)
 
 
@@ -843,20 +964,20 @@ def analyze_routing_mg1(df_device, df_cloud, thresholds):
 
 def calculate_system_arrival_rate(df_device, df_cloud):
     """
-    Calculates the system arrival rate (lambda) based on the intersection of jobs 
+    Calculates the system arrival rate (lambda) based on the intersection of jobs
     in device and cloud dataframes over the duration of the device experiment.
     """
     # Merge to find intersection count
     merged_df = pd.merge(
-        df_device[['dataset_item_id']], 
-        df_cloud[['dataset_item_id']], 
+        df_device[['dataset_item_id']],
+        df_cloud[['dataset_item_id']],
         on='dataset_item_id'
     )
-    
+
     start_ts = df_device['job_start_ts'].min()
     end_ts = df_device['inference_end_ts'].max()
     duration_sec = (end_ts - start_ts) / 1000.0
-    
+
     if duration_sec > 0:
         return len(merged_df) / duration_sec
     return 0.0
@@ -873,14 +994,14 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, lambda_total, n
     """
     # 1. Merge Dataframes
     merged_df = pd.merge(
-        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
-        df_cloud[['dataset_item_id', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']], 
-        on='dataset_item_id', 
+        df_device[['dataset_item_id', 'number_of_characters', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']],
+        df_cloud[['dataset_item_id', 'inference_time_ms', 'job_start_ts', 'inference_end_ts']],
+        on='dataset_item_id',
         suffixes=('_dev', '_cloud')
     )
-    
+
     mean_inter_arrival = 1.0 / lambda_total if lambda_total > 0 else 1.0
-    
+
     print(f"Simulation Lambda: {lambda_total:.4f} req/s | Ca: {ca} | Simulating {num_jobs} jobs...")
 
     # Pre-convert pools
@@ -896,8 +1017,8 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, lambda_total, n
         server_free_dev = 0.0
         server_free_cloud = 0.0
         total_response_time = 0.0
-        
-        random.seed(42) 
+
+        random.seed(42)
 
         for _ in range(num_jobs):
             # A. Generate Arrival based on Ca
@@ -911,15 +1032,15 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, lambda_total, n
                 alpha = 1.0 / (ca**2)
                 beta = mean_inter_arrival / alpha
                 inter_arrival = random.gammavariate(alpha, beta)
-                
+
             t_now += inter_arrival
-            
+
             # B. Sample a Job
             idx = random.randint(0, pool_size - 1)
             chars = char_pool[idx]
             s_dev = s_dev_pool[idx]
             s_cloud = s_cloud_pool[idx]
-            
+
             # C. Routing Decision & Queue Simulation
             if chars <= T:
                 start_service = max(t_now, server_free_dev)
@@ -932,12 +1053,12 @@ def simulate_routing_validation(df_device, df_cloud, thresholds, lambda_total, n
                 completion = start_service + s_cloud
                 server_free_cloud = completion
                 response = completion - t_now
-            
+
             total_response_time += response
 
         avg_latency = total_response_time / num_jobs
         results.append({'threshold': T, 'sim_latency': avg_latency})
-        
+
     return pd.DataFrame(results)
 
 
@@ -950,14 +1071,14 @@ def estimate_linear_relationship(df, label="Model", plot=True):
     """
     x = df['number_of_characters']
     y = df['inference_time_ms'] / 1000.0 # Convert to seconds for consistency with simulation
-    
+
     slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-    
+
     print(f"--- {label} ---")
     print(f"Slope: {slope:.6f} s/char")
     print(f"Intercept: {intercept:.6f} s")
     print(f"R-squared: {r_value**2:.4f}")
-    
+
     if plot:
         plt.figure(figsize=(8, 5))
         plt.scatter(x, y, alpha=0.3, label='Data Points')
@@ -968,7 +1089,7 @@ def estimate_linear_relationship(df, label="Model", plot=True):
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.show()
-        
+
     return slope, intercept
 
 
@@ -993,8 +1114,8 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
         server_free_dev = 0.0
         server_free_cloud = 0.0
         total_response_time = 0.0
-        
-        random.seed(42) 
+
+        random.seed(42)
 
         for _ in range(num_jobs):
             # 1. Generate Arrival
@@ -1006,19 +1127,19 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
                 alpha = 1.0 / (ca**2)
                 beta = mean_inter_arrival / alpha
                 inter_arrival = random.gammavariate(alpha, beta)
-            
+
             t_now += inter_arrival
-            
+
             # 2. Generate Synthetic Job (Correlated)
             # Generate chars (ensure > 0)
             chars = max(10, random.gauss(char_mu, char_sigma))
-            
+
             # Calculate Service Times based on Linear Model + Random Noise
             # Noise represents variability not explained by length
             noise = random.gauss(0, 0.05) # 50ms noise
             s_dev = max(0.01, (slope_d * chars + int_d) + noise)
             s_cloud = max(0.01, (slope_c * chars + int_c) + noise)
-            
+
             # 3. Routing & Queueing
             if chars <= T:
                 start_service = max(t_now, server_free_dev)
@@ -1030,12 +1151,12 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
                 completion = start_service + s_cloud
                 server_free_cloud = completion
                 response = completion - t_now
-            
+
             total_response_time += response
 
         avg_latency = total_response_time / num_jobs
         results.append({'threshold': T, 'sim_latency': avg_latency})
-        
+
     return pd.DataFrame(results)
 
 
@@ -1149,40 +1270,40 @@ def simulate_routing_from_data(thresholds, lam, num_jobs, ca, input_sizes, dev_m
 def recommend_routing_decision(input_length, current_lambda, char_params, dev_model, cloud_model, ca=1.0):
     """
     Determines whether to route to 'Device' or 'Cloud' based on input length and system load.
-    
-    It finds the optimal threshold for the given lambda by simulating the system 
+
+    It finds the optimal threshold for the given lambda by simulating the system
     (using the synthetic model) and picking the threshold with minimum latency.
     """
     # Define search space for thresholds (coarse search for speed in this interactive function)
     # Optimization: Step size of 100 instead of 1 to speed up the loop significantly
     search_thresholds = range(0, 2000, 10)
-    
+
     # Run simulation to find optimal curve
     # Optimization: num_jobs=500 instead of 2000+ for faster execution
     sim_res = simulate_routing_synthetic(
-        search_thresholds, 
-        current_lambda, 
-        num_jobs=500, 
-        ca=ca, 
-        char_params=char_params, 
-        dev_model=dev_model, 
+        search_thresholds,
+        current_lambda,
+        num_jobs=500,
+        ca=ca,
+        char_params=char_params,
+        dev_model=dev_model,
         cloud_model=cloud_model
     )
-    
+
     # Find threshold with minimum latency
     # Filter out infinite latencies (unstable system)
     valid_res = sim_res[sim_res['sim_latency'] != float('inf')]
-    
+
     if valid_res.empty:
         # If system is overloaded at all thresholds, default to Cloud (usually has higher capacity)
         return "Cloud (System Overloaded)", 0, float('inf')
-        
+
     best_row = valid_res.loc[valid_res['sim_latency'].idxmin()]
     optimal_threshold = best_row['threshold']
     min_latency = best_row['sim_latency']
-    
+
     decision = "Device" if input_length <= optimal_threshold else "Cloud"
-    
+
     return decision, optimal_threshold, min_latency
 
 class TrafficRateEstimator:
@@ -1200,19 +1321,19 @@ class TrafficRateEstimator:
         """Returns the estimated requests per second (lambda)."""
         now = time.time()
         self._cleanup(now)
-        
+
         if not self.timestamps:
             return 0.0
-            
+
         # FIX: Use the actual duration of data we have, capped at window_size
         # This gives correct rates immediately, even during startup
         oldest_timestamp = self.timestamps[0]
         duration = now - oldest_timestamp
-        
+
         # Use the actual duration, but prevent division by zero or tiny intervals
         # We use a minimum of 0.5s to avoid extreme spikes for the very first request
         effective_window = max(duration, 0.5)
-            
+
         return len(self.timestamps) / effective_window
 
     def _cleanup(self, current_time):
@@ -1231,7 +1352,7 @@ class StatefulScheduler:
     def __init__(self, dev_model, cloud_model, force_policy=None):
         """
         Initializes the scheduler.
-        
+
         Args:
             dev_model (tuple): A tuple (slope, intercept) for the device's performance model.
             cloud_model (tuple): A tuple (slope, intercept) for the cloud's performance model.
@@ -1242,7 +1363,7 @@ class StatefulScheduler:
         self.cloud_model = cloud_model
         self.device_free_at = 0.0
         self.cloud_free_at = 0.0
-        
+
         # Validate and store the forced policy
         if force_policy and force_policy not in ['device', 'cloud']:
             raise ValueError("force_policy must be 'device', 'cloud', or None.")
