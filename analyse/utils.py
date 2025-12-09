@@ -1040,6 +1040,110 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
 
 
 
+class SimpleQueue:
+    """A simple FCFS queue for discrete-event simulation."""
+    def __init__(self):
+        self.finish_time = 0.0          # Time when the last job in the queue will be finished
+        self.total_response_time = 0.0  # Sum of response times for all jobs
+        self.jobs_processed = 0         # Total number of jobs that have passed through the queue
+        self.total_service_time = 0.0   # Sum of service times for all jobs
+        self.last_arrival_time = 0.0    # The arrival time of the last job to enter the system
+
+    def add_job(self, arrival_time, service_time):
+        """Adds a job to the queue and updates statistics."""
+        # A job can't start before it arrives OR before the server is free
+        start_time = max(arrival_time, self.finish_time)
+        
+        # The new finish time for the server is when this job completes
+        self.finish_time = start_time + service_time
+        
+        # Response time for this job = (time of completion) - (time of arrival)
+        response_time = self.finish_time - arrival_time
+        
+        # Update statistics
+        self.total_response_time += response_time
+        self.jobs_processed += 1
+        self.total_service_time += service_time
+        self.last_arrival_time = max(self.last_arrival_time, arrival_time)
+
+    @property
+    def utilization(self):
+        """Calculates the server utilization."""
+        # Utilization = (total time server was busy) / (total time elapsed)
+        if self.last_arrival_time == 0:
+            return 0.0
+        # In this simulation model, the total time is the finish time of the last job
+        return self.total_service_time / self.finish_time if self.finish_time > 0 else 0.0
+
+
+
+
+
+def simulate_routing_from_data(thresholds, lam, num_jobs, ca, input_sizes, dev_model, cloud_model):
+    """
+    Simulates a threshold-based routing policy using input sizes sampled from a real dataset.
+
+    Args:
+        thresholds (iterable): A range of character thresholds to test.
+        lam (float): The total system arrival rate (requests/sec).
+        num_jobs (int): The number of jobs to simulate for each threshold.
+        ca (float): Coefficient of variation for inter-arrival times (0=deterministic, 1=Poisson).
+        input_sizes (list or np.array): A collection of real input character sizes to sample from.
+        dev_model (tuple): (slope, intercept) for the device's linear performance model.
+        cloud_model (tuple): (slope, intercept) for the cloud's linear performance model.
+
+    Returns:
+        pd.DataFrame: A dataframe with thresholds and corresponding average latencies.
+    """
+    slope_dev, int_dev = dev_model
+    slope_cloud, int_cloud = cloud_model
+    
+    results = []
+
+    for T in thresholds:
+        # Initialize queues for each threshold simulation
+        q_device = SimpleQueue()
+        q_cloud = SimpleQueue()
+
+        # Generate all arrival times at once
+        if ca == 0.0:  # Deterministic arrivals
+            inter_arrivals = np.full(num_jobs, 1.0 / lam)
+        else:  # Exponential arrivals (for Poisson process)
+            # Scale parameter for exponential is 1/lambda
+            inter_arrivals = np.random.exponential(scale=1.0 / lam, size=num_jobs)
+        
+        arrival_times = np.cumsum(inter_arrivals)
+
+        # Sample from the provided input sizes
+        char_sizes = np.random.choice(input_sizes, size=num_jobs, replace=True)
+
+        # --- Main Simulation Loop ---
+        for i in range(num_jobs):
+            arrival_time = arrival_times[i]
+            char_size = char_sizes[i]
+
+            # Route based on threshold T
+            if char_size <= T:
+                # --- Route to Device ---
+                service_time = (slope_dev * char_size + int_dev) / 1000.0
+                q_device.add_job(arrival_time, service_time)
+            else:
+                # --- Route to Cloud ---
+                service_time = (slope_cloud * char_size + int_cloud) / 1000.0
+                q_cloud.add_job(arrival_time, service_time)
+
+        # --- Collect Results ---
+        total_latency = q_device.total_response_time + q_cloud.total_response_time
+        total_jobs = q_device.jobs_processed + q_cloud.jobs_processed
+        avg_latency = total_latency / total_jobs if total_jobs > 0 else 0
+        
+        # Check for instability
+        if q_device.utilization >= 1.0 or q_cloud.utilization >= 1.0:
+            avg_latency = float('inf')
+
+        results.append({'threshold': T, 'sim_latency': avg_latency})
+
+    return pd.DataFrame(results)
 
 
 def recommend_routing_decision(input_length, current_lambda, char_params, dev_model, cloud_model, ca=1.0):
@@ -1144,6 +1248,11 @@ class StatefulScheduler:
             raise ValueError("force_policy must be 'device', 'cloud', or None.")
         self.force_policy = force_policy
 
+    def reset(self):
+        """Resets the scheduler's state by clearing the queues."""
+        self.device_queue_finish_time = 0.0
+        self.cloud_queue_finish_time = 0.0
+
     def _predict_service_time(self, size, model):
         """
         Predicts the service time in seconds for a given job size.
@@ -1200,3 +1309,50 @@ class StatefulScheduler:
         finish_cloud = start_cloud + st_cloud
         self.cloud_free_at = finish_cloud
         return "Cloud", start_cloud, finish_cloud
+    
+
+
+
+def get_service_metrics(df):
+    """Calculates service rate (mu) and CoV (cs) from a dataframe."""
+    service_times_s = df['inference_time_ms'] / 1000.0
+    mean_service_time = service_times_s.mean()
+    std_dev_service_time = service_times_s.std()
+    mu = 1.0 / mean_service_time
+    cs = std_dev_service_time / mean_service_time
+    return mu, cs
+
+def run_policy_simulation_synthetic(scheduler, lam, num_jobs, ca, char_params):
+    """Runs a simulation for a given scheduler and a synthetic request stream."""
+    total_latency = 0.0
+    sim_time = 0.0
+    
+    # Unpack character distribution parameters
+    char_mean, char_std = char_params
+
+    for _ in range(num_jobs):
+        # Determine next arrival time
+        if ca == 1.0: # Poisson arrivals
+            inter_arrival_time = random.expovariate(lam)
+        else: # Deterministic arrivals
+            inter_arrival_time = 1.0 / lam
+        sim_time += inter_arrival_time
+        
+        # Generate a synthetic input size
+        input_len = int(max(1, np.random.normal(char_mean, char_std)))
+        
+        # Get decision and finish time from the scheduler
+        _, _, finish_time = scheduler.decide_at_time(input_len, sim_time)
+        
+        response_time = finish_time - sim_time
+        total_latency += response_time
+    
+    avg_latency = total_latency / num_jobs if num_jobs > 0 else 0.0
+    
+    # Check for instability (very high latency)
+    # If avg latency is more than 100x the unloaded cloud service time, consider it unstable
+    unloaded_cloud_time = scheduler.cloud_model[0] * char_mean + scheduler.cloud_model[1]
+    if avg_latency > unloaded_cloud_time * 100:
+        return float('inf')
+        
+    return avg_latency
