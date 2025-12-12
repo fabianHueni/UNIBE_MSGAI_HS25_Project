@@ -1477,3 +1477,71 @@ def run_policy_simulation_synthetic(scheduler, lam, num_jobs, ca, char_params):
         return float('inf')
         
     return avg_latency
+
+def plot_system_performance(systems_to_analyze):
+    # --- Create two subplots, one for each system ---
+    fig, axes = plt.subplots(1, len(systems_to_analyze), figsize=(18, 7), sharey=True)
+    fig.suptitle('G/G/1 Performance Analysis', fontsize=16)
+
+    all_finite_latencies = []
+
+    for i, (system_name, df_single_system) in enumerate(systems_to_analyze):
+        ax = axes[i] # Select the correct subplot
+
+        # --- 2. Calculate Service Time statistics from the experimental data ---
+        service_times_s = df_single_system['inference_time_ms'] / 1000.0
+        mean_service_time = service_times_s.mean()
+        std_dev_service_time = service_times_s.std()
+        mu = 1.0 / mean_service_time
+        cs = std_dev_service_time / mean_service_time
+
+        print(f"--- Analyzing: {system_name} ---")
+        print(f"Mean Service Time (E[S]): {mean_service_time:.4f} s")
+        print(f"Service Rate (μ): {mu:.2f} req/s")
+        print(f"Service Time CoV (cs): {cs:.2f}\n")
+
+        # --- 3. Define a range of arrival rates (lambda) to test ---
+        lambda_range = np.linspace(0.01, mu * 0.999, 1000)
+
+        # --- 4. Calculate Mean Response Time using Kingman's Approximation ---
+        scenarios = {
+            "Deterministic Arrivals (ca=0)": 0.0,
+            "Poisson Arrivals (ca=1)": 1.0
+        }
+        results = {}
+
+        for scenario_name, ca in scenarios.items():
+            response_times = []
+            for lam in lambda_range:
+                rho = lam * mean_service_time
+                if rho >= 1:
+                    mean_response_time = float('inf')
+                else:
+                    mean_wait_time = (rho / (1 - rho)) * ((ca**2 + cs**2) / 2) * mean_service_time
+                    mean_response_time = mean_wait_time + mean_service_time
+                response_times.append(mean_response_time)
+            results[scenario_name] = response_times
+            # Collect finite values for setting y-axis limit later
+            all_finite_latencies.extend([r for r in response_times if r < float('inf')])
+
+
+        # --- 5. Plot the results on the specific subplot ---
+        for scenario_name, latencies in results.items():
+            ax.plot(lambda_range, latencies, label=scenario_name, linewidth=2)
+
+        ax.axvline(x=mu, color='r', linestyle='--', label=f'Saturation Point (μ = {mu:.2f} req/s)')
+        ax.set_xlabel('Arrival Rate λ (requests/second)')
+        ax.set_title(f'Performance of {system_name}')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    # Set a shared y-label
+    axes[0].set_ylabel('Mean Response Time (s)')
+
+    # Set a reasonable upper limit for the y-axis across both plots
+    if all_finite_latencies:
+        upper_limit = np.percentile(all_finite_latencies, 99) * 1.2
+        plt.ylim(bottom=0, top=upper_limit)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to make room for suptitle
+    plt.show()
