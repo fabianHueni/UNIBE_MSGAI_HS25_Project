@@ -1819,7 +1819,7 @@ def compare_policy_performance_with_table(test_lambdas, policies_to_test, char_p
             request_stream.append({'id': i, 'arrival_time': current_time, 'size': input_len})
 
         # --- b) Find the optimal threshold for the Stateless policy AT THIS LAMBDA ---
-        thresholds_scan = range(950, 1250, 1) # Scan thresholds to find the best one
+        thresholds_scan = range(1, 2000, 1) # Scan thresholds to find the best one
         sim_results_for_T = simulate_routing_synthetic(
             thresholds_scan, lam, num_jobs=5000, ca=1.0, 
             char_params=char_params, 
@@ -1977,6 +1977,7 @@ def plot_policy_comparison(detailed_results, policies_to_test):
     ax.tick_params(axis='x', rotation=0, labelsize=11)
     ax.set_yscale('log') # Set the y-axis to a logarithmic scale
     ax.set_ylim(0,50)
+    ax.set_xlim(-0.2,4)
 
     # Customize grid and legend
     ax.grid(axis='y', linestyle='--', alpha=0.7)
