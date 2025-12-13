@@ -1096,7 +1096,8 @@ def estimate_linear_relationship(df, label="Model", plot=True):
 def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
                                char_params=(500, 200), # (Mean, Std) for input chars
                                dev_model=(0.001, 0.1), # (Slope, Intercept) for Device
-                               cloud_model=(0.0005, 0.05)): # (Slope, Intercept) for Cloud
+                               cloud_model=(0.0005, 0.05),
+                               add_noise=False): # (Slope, Intercept) for Cloud
     """
     Synthetic simulation that generates data on-the-fly using a linear model.
     Service Time = Slope * Chars + Intercept + Noise
@@ -1135,8 +1136,11 @@ def simulate_routing_synthetic(thresholds, lambda_total, num_jobs=10000, ca=1.0,
             chars = max(10, random.gauss(char_mu, char_sigma))
 
             # Calculate Service Times based on Linear Model + Random Noise
-            # Noise represents variability not explained by length
-            noise = random.gauss(0, 0.05) # 50ms noise
+
+            noise = 0
+            if (add_noise):
+                # Noise represents variability not explained by length
+                noise = random.gauss(0, 0.05) # 50ms noise
             s_dev = max(0.01, (slope_d * chars + int_d) + noise)
             s_cloud = max(0.01, (slope_c * chars + int_c) + noise)
 
@@ -1541,6 +1545,7 @@ def plot_system_performance(systems_to_analyze):
     fig.suptitle('G/G/1 Performance Analysis', fontsize=16)
 
     all_finite_latencies = []
+    mus = []
 
     for i, (system_name, df_single_system) in enumerate(systems_to_analyze):
         ax = axes[i] # Select the correct subplot
@@ -1550,6 +1555,7 @@ def plot_system_performance(systems_to_analyze):
         mean_service_time = service_times_s.mean()
         std_dev_service_time = service_times_s.std()
         mu = 1.0 / mean_service_time
+        mus.append(mu)
         cs = std_dev_service_time / mean_service_time
 
         print(f"--- Analyzing: {system_name} ---")
@@ -1602,6 +1608,7 @@ def plot_system_performance(systems_to_analyze):
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to make room for suptitle
     plt.show()
+    return mus
 
 
 
@@ -1792,11 +1799,8 @@ def compare_policy_performance(test_lambdas, char_params, dev_model, cloud_model
 
 
 
-
-
-def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, cloud_model, name_device, name_cloud):
-    num_sim_requests = 50
-    policies_to_test = ['Always Device ('+name_device+')', 'Always Cloud ('+name_cloud+')', 'Stateless Threshold', 'Stateful JSEQ']
+def compare_policy_performance_with_table(test_lambdas, policies_to_test, char_params, dev_model, cloud_model, name_device, name_cloud):
+    num_sim_requests = 500000
     detailed_results = []
 
     # --- MAIN SIMULATION LOOP ---
@@ -1815,9 +1819,9 @@ def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, 
             request_stream.append({'id': i, 'arrival_time': current_time, 'size': input_len})
 
         # --- b) Find the optimal threshold for the Stateless policy AT THIS LAMBDA ---
-        thresholds_scan = range(0, 2500, 50) # Scan thresholds to find the best one
+        thresholds_scan = range(950, 1250, 1) # Scan thresholds to find the best one
         sim_results_for_T = simulate_routing_synthetic(
-            thresholds_scan, lam, num_jobs=2000, ca=1.0, 
+            thresholds_scan, lam, num_jobs=5000, ca=1.0, 
             char_params=char_params, 
             dev_model=dev_model, 
             cloud_model=cloud_model
@@ -1875,22 +1879,6 @@ def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, 
             # This is the correct way to calculate average wait time in each queue.
             avg_wait_device = device_stats['wait_time'].mean() if not device_stats.empty else 0
             avg_wait_cloud = cloud_stats['wait_time'].mean() if not cloud_stats.empty else 0
-
-                    # --- DEBUGGING BLOCK ---
-            # Let's inspect the values for one specific case to see what's happening.
-            if lam == 0.5 and policy_name == 'Stateless Threshold':
-                print("\n--- DEBUGGING OUTPUT ---")
-                print(f"Policy: {policy_name}, Lambda: {lam}")
-                print("First 5 stats entries:")
-                print(df_stats.head())
-                print("\nBreakdown:")
-                print(f"  Total Sim Time: {total_simulation_time:.2f}s")
-                print(f"  Num Device Jobs: {len(device_stats)}, Num Cloud Jobs: {len(cloud_stats)}")
-                print(f"  Lambda Device (eff): {lambda_device:.4f}, Lambda Cloud (eff): {lambda_cloud:.4f}")
-                print(f"  Avg Wait Device: {avg_wait_device:.6f}, Avg Wait Cloud: {avg_wait_cloud:.6f}")
-                print(f"  Calculated Device Q-Len: {lambda_device * avg_wait_device:.4f}")
-                print(f"  Calculated Cloud Q-Len: {lambda_cloud * avg_wait_cloud:.4f}")
-                print("--- END DEBUGGING ---\n")
             
             # This is the correct application of Little's Law: Lq = λq * Wq
             # If avg_wait_device is non-zero, this will produce a non-zero queue length.
@@ -1930,7 +1918,6 @@ def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, 
 
 
     # --- PLOT QUEUE LENGTHS VS. ARRIVAL RATE ---
-    import seaborn as sns
     sns.set_theme(style="whitegrid")
 
     # Create a FacetGrid to make one subplot per policy
@@ -1955,11 +1942,13 @@ def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, 
     plt.tight_layout(rect=[0, 0, 0.9, 0.97])
     plt.show()
 
+    return detailed_results
 
 
+
+def plot_policy_comparison(detailed_results, policies_to_test):
     # --- PREPARE DATA FOR PLOTTING ---
     results_df = pd.DataFrame(detailed_results)
-        # No pivot needed for seaborn, it prefers long-form data.
 
     # --- CREATE LINE PLOT WITH SEABORN ---
     sns.set_theme(style="whitegrid")
@@ -1987,8 +1976,9 @@ def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, 
     ax.set_xlabel('Arrival Rate λ (req/s)', fontsize=12)
     ax.tick_params(axis='x', rotation=0, labelsize=11)
     ax.set_yscale('log') # Set the y-axis to a logarithmic scale
+    ax.set_ylim(0,50)
 
-        # Customize grid and legend
+    # Customize grid and legend
     ax.grid(axis='y', linestyle='--', alpha=0.7)
     ax.legend(title="Policy", loc='upper left', ncol=1)
 
