@@ -1977,7 +1977,6 @@ def plot_policy_comparison(detailed_results, policies_to_test):
     ax.tick_params(axis='x', rotation=0, labelsize=11)
     ax.set_yscale('log') # Set the y-axis to a logarithmic scale
     ax.set_ylim(0,50)
-    ax.set_xlim(-0.2,4)
 
     # Customize grid and legend
     ax.grid(axis='y', linestyle='--', alpha=0.7)
