@@ -1444,7 +1444,9 @@ def get_service_metrics(df):
     return mu, cs
 
 def run_policy_simulation_synthetic(scheduler, lam, num_jobs, ca, char_params):
-    """Runs a simulation for a given scheduler and a synthetic request stream."""
+    """
+    Runs a simulation for a given scheduler and a synthetic generated request stream.
+    """
     total_latency = 0.0
     sim_time = 0.0
     
@@ -1477,6 +1479,61 @@ def run_policy_simulation_synthetic(scheduler, lam, num_jobs, ca, char_params):
         return float('inf')
         
     return avg_latency
+
+
+def run_policy_simulation(scheduler, requests):
+    """
+    Runs a simulation for a given scheduler and request stream
+    (no stream generated in this function)
+    """
+    total_latency = 0.0
+    # Reset scheduler state before each run
+    scheduler.reset()
+    for req in requests:
+        _, _, finish_time = scheduler.decide_at_time(req['size'], req['arrival_time'])
+        response_time = finish_time - req['arrival_time']
+        total_latency += response_time
+    
+    avg_latency = total_latency / len(requests) if requests else 0.0
+    # Add a check for instability
+    if avg_latency > 1000.0: # If average latency exceeds 1000s, consider it unstable
+        return avg_latency # Return NaN for unstable results to make plotting cleaner
+    return avg_latency
+
+
+def run_detailed_policy_simulation(policy_name, scheduler, requests, stateless_threshold=None):
+    """
+    Runs a simulation and returns detailed statistics for each request.
+    """
+    request_stats = []
+    scheduler.reset()
+
+    # For the 'Stateless Threshold' policy, we must simulate it statelessly.
+    # This means using a new, clean scheduler for each decision to prevent state carry-over.
+    if policy_name == 'Stateless Threshold':
+        # This temporary scheduler will be used to process all requests for this run.
+        # Its internal state will be updated correctly for each request.
+        temp_stateless_scheduler = StatefulScheduler(dev_model=scheduler.dev_model, cloud_model=scheduler.cloud_model)
+        for req in requests:
+            if req['size'] <= stateless_threshold:
+                decision, start_time, finish_time = temp_stateless_scheduler.route_to_device(req['size'], req['arrival_time'])
+            else:
+                decision, start_time, finish_time = temp_stateless_scheduler.route_to_cloud(req['size'], req['arrival_time'])
+            
+            wait_time = start_time - req['arrival_time']
+            service_time = finish_time - start_time
+            request_stats.append({'wait_time': wait_time, 'service_time': service_time, 'decision': decision})
+    else:
+        # For all other stateful policies, the original logic is correct.
+        for req in requests:
+            decision, start_time, finish_time = scheduler.decide_at_time(req['size'], req['arrival_time'])
+            wait_time = start_time - req['arrival_time']
+            service_time = finish_time - start_time
+            request_stats.append({'wait_time': wait_time, 'service_time': service_time, 'decision': decision})
+            
+    return request_stats
+
+
 
 def plot_system_performance(systems_to_analyze):
     # --- Create two subplots, one for each system ---
@@ -1544,4 +1601,396 @@ def plot_system_performance(systems_to_analyze):
         plt.ylim(bottom=0, top=upper_limit)
 
     plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to make room for suptitle
+    plt.show()
+
+
+
+def plot_threshold_comparisons(test_lambdas, thresholds, char_params, dev_model, cloud_model):
+    # Define the arrival scenarios to plot
+    scenarios = {
+        "Deterministic Arrivals (ca=0.0)": 0.0,
+        "Poisson Arrivals (ca=1.0)": 1.0
+    }
+
+    # Create subplots
+    fig, axes = plt.subplots(1, 2, figsize=(18, 7), sharey=True)
+    fig.suptitle('Impact of Arrival Rate (λ) on Optimal Routing Threshold', fontsize=16)
+
+    colors = plt.cm.viridis(np.linspace(0, 1, len(test_lambdas)))
+    all_finite_latencies = []
+
+    # --- Loop through scenarios (Deterministic, Poisson) ---
+    for i, (title, ca_val) in enumerate(scenarios.items()):
+        ax = axes[i]
+        print(f"--- Running simulations for {title} ---")
+
+        # --- Loop through different arrival rates (lambda) ---
+        for j, lam in enumerate(test_lambdas):
+            print(f"  -> Simulating λ = {lam:.1f} req/s")
+            
+            # Run synthetic simulation for the current scenario and lambda
+            sim_res = simulate_routing_synthetic(
+                thresholds=thresholds, 
+                lambda_total=lam, 
+                num_jobs=200000,  # Reduced jobs slightly for faster plotting
+                ca=ca_val,
+                char_params=char_params, 
+                dev_model=dev_model, 
+                cloud_model=cloud_model
+            )
+            
+            # Plot the curve on the correct subplot
+            ax.plot(sim_res['threshold'], sim_res['sim_latency'], 
+                    label=f'λ = {lam:.1f}', color=colors[j], linewidth=2)
+            
+            # Collect finite values for auto-scaling the y-axis
+            finite_vals = sim_res[sim_res['sim_latency'] != float('inf')]['sim_latency']
+            all_finite_latencies.extend(finite_vals.dropna().tolist())
+
+        # --- Configure subplot ---
+        ax.set_xlabel('Threshold (Characters)')
+        ax.set_title(title)
+        ax.legend(title="Arrival Rate (req/s)")
+        ax.grid(True, which="both", linestyle='--', linewidth=0.5) # Grid for major and minor ticks
+        ax.set_yscale('log') # Set y-axis to log scale
+
+    # --- Final plot configuration ---
+    axes[0].set_ylabel('Mean Response Time (s) [Log Scale]')
+
+    # Set reasonable Y-limits across both plots to ignore unstable queues
+    if all_finite_latencies:
+        # Filter out zero or negative values before calculating min for log scale
+        positive_latencies = [l for l in all_finite_latencies if l > 0]
+        if positive_latencies:
+            upper_lim = np.percentile(positive_latencies, 99) * 1.5 # Use percentile for robustness
+            lower_lim = min(positive_latencies) * 0.9
+            plt.ylim(lower_lim, upper_lim)
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.show()
+
+
+
+def compare_policy_performance(test_lambdas, char_params, dev_model, cloud_model, name_device, name_cloud):
+    num_sim_requests = 200 # Use a reasonable number of requests for stable results
+    policies_to_test = ['Always Device ('+name_device+')', 'Always Cloud ('+name_cloud+')', 'Stateless Threshold', 'Stateful JSEQ']
+    all_results = []
+
+    # --- MAIN SIMULATION LOOP ---
+    print("--- Running simulations for different arrival rates ---")
+
+    for lam in test_lambdas:
+        print(f"\n>>> Simulating for λ = {lam:.2f} req/s...")
+        
+        # --- a) Generate a consistent request stream for this lambda ---
+        request_stream = []
+        current_time = 0.0
+        for i in range(num_sim_requests):
+            # Generate Poisson arrivals for the given lambda
+            inter_arrival_time = random.expovariate(lam)
+            current_time += inter_arrival_time
+            # Generate a synthetic input size
+            input_len = int(max(1, np.random.normal(char_params[0], char_params[1])))
+            request_stream.append({'id': i, 'arrival_time': current_time, 'size': input_len})
+
+        # --- b) Find the optimal threshold for the Stateless policy AT THIS LAMBDA ---
+        thresholds_scan = range(0, 2500, 50) # Scan thresholds to find the best one
+        sim_results_for_T = simulate_routing_synthetic(
+            thresholds_scan, lam, num_jobs=2000, ca=1.0, 
+            char_params=char_params, 
+            dev_model=dev_model, 
+            cloud_model=cloud_model
+        )
+        optimal_T_stateless = sim_results_for_T.loc[sim_results_for_T['sim_latency'].idxmin()]['threshold']
+        print(f"  Optimal stateless T for λ={lam:.2f} is {optimal_T_stateless} chars.")
+
+        # --- c) Initialize all schedulers for this run ---
+        schedulers = {}
+        for policy_name in policies_to_test:
+            if 'Always Device' in policy_name:
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model, 
+                    force_policy='device'
+                )
+            elif 'Always Cloud' in policy_name:
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model, 
+                    force_policy='cloud'
+                )
+            else: # For 'Stateful JSEQ' and 'Stateless Threshold'
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model
+                )
+        
+        
+        # Define a function that correctly captures the scheduler instance and threshold
+        def create_stateless_decision_function(scheduler_instance, threshold):
+            def decision_function(size, time):
+                if size <= threshold:
+                    return scheduler_instance.route_to_device(size, time)
+                else:
+                    return scheduler_instance.route_to_cloud(size, time)
+            return decision_function
+
+        # Assign the correctly scoped function to the scheduler's decide_at_time method
+        schedulers['Stateless Threshold'].decide_at_time = create_stateless_decision_function(
+            schedulers['Stateless Threshold'],
+            optimal_T_stateless
+        )
+
+
+        # --- d) Run simulation for each policy ---
+        for policy_name in policies_to_test:
+            scheduler = schedulers[policy_name]
+            avg_latency = run_policy_simulation(scheduler, request_stream)
+            all_results.append({'lambda': lam, 'policy': policy_name, 'latency': avg_latency})
+            print(f"  - {policy_name:<20}: {avg_latency:.4f}s")
+
+    # --- PREPARE DATA FOR PLOTTING ---
+    results_df = pd.DataFrame(all_results)
+    # No pivot needed for seaborn, it prefers long-form data.
+
+    # --- CREATE LINE PLOT WITH SEABORN ---
+    sns.set_theme(style="whitegrid")
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+
+    # Use a lineplot to show the trend of latency vs. lambda for each policy
+    sns.lineplot(
+        data=results_df,
+        x='lambda',
+        y='latency',
+        hue='policy',
+        hue_order=policies_to_test, # Ensure the policy order is correct in the legend
+        style='policy', # Use different line styles for each policy
+        markers=False,   # Add markers to each data point
+        dashes=False,
+        ax=ax,
+        palette='viridis', # Use a nice color palette
+        linewidth=2.5
+    )
+
+    # --- FORMATTING ---
+    ax.set_title('Policy Performance vs. Arrival Rate (λ)', fontsize=18, pad=20)
+    ax.set_ylabel('Average Response Time (s) [Log Scale]', fontsize=12)
+    ax.set_xlabel('Arrival Rate λ (req/s)', fontsize=12)
+    ax.tick_params(axis='x', rotation=0, labelsize=11)
+    ax.set_yscale('log') # Set the y-axis to a logarithmic scale
+
+    # Customize grid and legend
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.legend(title="Policy", loc='upper left', ncol=1)
+
+    plt.tight_layout() # Adjust layout
+    plt.show()
+
+    display(results_df.pivot(index='policy', columns='lambda', values='latency').reindex(policies_to_test))
+
+
+
+
+
+
+def compare_policy_performance_with_table(test_lambdas, char_params, dev_model, cloud_model, name_device, name_cloud):
+    num_sim_requests = 50
+    policies_to_test = ['Always Device ('+name_device+')', 'Always Cloud ('+name_cloud+')', 'Stateless Threshold', 'Stateful JSEQ']
+    detailed_results = []
+
+    # --- MAIN SIMULATION LOOP ---
+    print("--- Running simulations for different arrival rates ---")
+
+    for lam in test_lambdas:
+        print(f"\n>>> Simulating for λ = {lam:.2f} req/s...")
+        
+        # --- a) Generate a consistent request stream for this lambda ---
+        request_stream = []
+        current_time = 0.0
+        for i in range(num_sim_requests):
+            inter_arrival_time = random.expovariate(lam)
+            current_time += inter_arrival_time
+            input_len = int(max(1, np.random.normal(char_params[0], char_params[1])))
+            request_stream.append({'id': i, 'arrival_time': current_time, 'size': input_len})
+
+        # --- b) Find the optimal threshold for the Stateless policy AT THIS LAMBDA ---
+        thresholds_scan = range(0, 2500, 50) # Scan thresholds to find the best one
+        sim_results_for_T = simulate_routing_synthetic(
+            thresholds_scan, lam, num_jobs=2000, ca=1.0, 
+            char_params=char_params, 
+            dev_model=dev_model, 
+            cloud_model=cloud_model
+        )
+        optimal_T_stateless = sim_results_for_T.loc[sim_results_for_T['sim_latency'].idxmin()]['threshold']
+        print(f"  Optimal stateless T for λ={lam:.2f} is {optimal_T_stateless} chars.")
+
+        # --- c) Initialize all schedulers for this run ---
+        schedulers = {}
+        for policy_name in policies_to_test:
+            if 'Always Device' in policy_name:
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model, 
+                    force_policy='device'
+                )
+            elif 'Always Cloud' in policy_name:
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model, 
+                    force_policy='cloud'
+                )
+            else: # For 'Stateful JSEQ' and 'Stateless Threshold'
+                schedulers[policy_name] = StatefulScheduler(
+                    dev_model=dev_model, 
+                    cloud_model=cloud_model
+                )
+
+        # --- d) Run simulation and process results for each policy ---
+        for policy_name in policies_to_test:
+            stats = run_detailed_policy_simulation(
+                policy_name, 
+                schedulers[policy_name], 
+                request_stream, 
+                stateless_threshold=optimal_T_stateless
+            )
+            df_stats = pd.DataFrame(stats)
+            
+            avg_wait_time = df_stats['wait_time'].mean()
+            avg_service_time = df_stats['service_time'].mean()
+
+            # This calculation of total_simulation_time is correct.
+            df_stats['finish_time'] = df_stats['wait_time'] + df_stats['service_time'] + pd.Series([r['arrival_time'] for r in request_stream])
+            total_simulation_time = df_stats['finish_time'].max()
+            
+            df_stats['decision_clean'] = df_stats['decision'].str.strip().str.lower()
+            device_stats = df_stats[df_stats['decision_clean'] == 'device']
+            cloud_stats = df_stats[df_stats['decision_clean'] == 'cloud']
+            
+            
+            # This is the correct way to calculate effective arrival rate to each queue.
+            lambda_device = len(device_stats) / total_simulation_time if total_simulation_time > 0 else 0
+            lambda_cloud = len(cloud_stats) / total_simulation_time if total_simulation_time > 0 else 0
+            
+            # This is the correct way to calculate average wait time in each queue.
+            avg_wait_device = device_stats['wait_time'].mean() if not device_stats.empty else 0
+            avg_wait_cloud = cloud_stats['wait_time'].mean() if not cloud_stats.empty else 0
+
+                    # --- DEBUGGING BLOCK ---
+            # Let's inspect the values for one specific case to see what's happening.
+            if lam == 0.5 and policy_name == 'Stateless Threshold':
+                print("\n--- DEBUGGING OUTPUT ---")
+                print(f"Policy: {policy_name}, Lambda: {lam}")
+                print("First 5 stats entries:")
+                print(df_stats.head())
+                print("\nBreakdown:")
+                print(f"  Total Sim Time: {total_simulation_time:.2f}s")
+                print(f"  Num Device Jobs: {len(device_stats)}, Num Cloud Jobs: {len(cloud_stats)}")
+                print(f"  Lambda Device (eff): {lambda_device:.4f}, Lambda Cloud (eff): {lambda_cloud:.4f}")
+                print(f"  Avg Wait Device: {avg_wait_device:.6f}, Avg Wait Cloud: {avg_wait_cloud:.6f}")
+                print(f"  Calculated Device Q-Len: {lambda_device * avg_wait_device:.4f}")
+                print(f"  Calculated Cloud Q-Len: {lambda_cloud * avg_wait_cloud:.4f}")
+                print("--- END DEBUGGING ---\n")
+            
+            # This is the correct application of Little's Law: Lq = λq * Wq
+            # If avg_wait_device is non-zero, this will produce a non-zero queue length.
+            avg_q_len_device = lambda_device * avg_wait_device
+            avg_q_len_cloud = lambda_cloud * avg_wait_cloud
+            
+            detailed_results.append({
+                'Lambda': lam,
+                'Policy': policy_name,
+                'Total Latency (s)': avg_wait_time,
+                'Avg Inference Time (s)': avg_service_time,
+                'Avg Device Queue Length': avg_q_len_device,
+                'Avg Cloud Queue Length': avg_q_len_cloud
+            })
+            print(f"  - {policy_name:<20}: Done.")
+
+    # --- DISPLAY RESULTS IN A TABLE ---
+    results_df = pd.DataFrame(detailed_results)
+
+    for policy in policies_to_test:
+        print(f"\n\n--- Results for: {policy} ---")
+        policy_df = results_df[results_df['Policy'] == policy].set_index('Lambda')
+        display(policy_df[[
+            'Total Latency (s)', 
+            'Avg Inference Time (s)', 
+            'Avg Device Queue Length', 
+            'Avg Cloud Queue Length'
+        ]].style.format({
+            'Total Latency (s)': '{:.4f}',
+            'Avg Inference Time (s)': '{:.4f}',
+            'Avg Device Queue Length': '{:.2f}',
+            'Avg Cloud Queue Length': '{:.2f}'
+        }).background_gradient(
+            cmap='viridis', 
+            subset=['Total Latency (s)', 'Avg Device Queue Length', 'Avg Cloud Queue Length']
+        ))
+
+
+    # --- PLOT QUEUE LENGTHS VS. ARRIVAL RATE ---
+    import seaborn as sns
+    sns.set_theme(style="whitegrid")
+
+    # Create a FacetGrid to make one subplot per policy
+    g = sns.FacetGrid(results_df, col="Policy", col_wrap=2, height=5, aspect=1.2, sharey=False)
+
+    # Map the line plots for device and cloud queue lengths
+    g.map_dataframe(sns.lineplot, x="Lambda", y="Avg Device Queue Length", color='#1f77b4', marker='o', label="Device Queue")
+    g.map_dataframe(sns.lineplot, x="Lambda", y="Avg Cloud Queue Length", color='#2ca02c', marker='x', label="Cloud Queue")
+
+    # Adjust titles and labels
+    g.set_axis_labels("Arrival Rate λ (req/s)", "Average Queue Length (Lq)")
+    g.set_titles(col_template="{col_name} Policy")
+
+    # Add and reposition the legend
+    g.add_legend(title="Queue Type")
+    sns.move_legend(g, "lower center", bbox_to_anchor=(0.475, 0.9))
+
+    # Add a main title for the entire figure
+    g.fig.suptitle('Average Queue Length vs. Arrival Rate for Each Policy', y=1.03, fontsize=16)
+
+    # Adjust layout to prevent title overlap and make space for the legend
+    plt.tight_layout(rect=[0, 0, 0.9, 0.97])
+    plt.show()
+
+
+
+    # --- PREPARE DATA FOR PLOTTING ---
+    results_df = pd.DataFrame(detailed_results)
+        # No pivot needed for seaborn, it prefers long-form data.
+
+    # --- CREATE LINE PLOT WITH SEABORN ---
+    sns.set_theme(style="whitegrid")
+
+    fig, ax = plt.subplots(figsize=(16, 9))
+
+    # Use a lineplot to show the trend of latency vs. lambda for each policy
+    sns.lineplot(
+            data=results_df,
+            x='Lambda',
+            y='Total Latency (s)',
+            hue='Policy',
+            hue_order=policies_to_test, # Ensure the policy order is correct in the legend
+            style='Policy', # Use different line styles for each policy
+            markers=False,   # Add markers to each data point
+            dashes=False,
+            ax=ax,
+            palette='viridis', # Use a nice color palette
+            linewidth=2.5
+        )
+
+        # --- FORMATTING ---
+    ax.set_title('Policy Performance vs. Arrival Rate (λ)', fontsize=18, pad=20)
+    ax.set_ylabel('Average Response Time (s) [Log Scale]', fontsize=12)
+    ax.set_xlabel('Arrival Rate λ (req/s)', fontsize=12)
+    ax.tick_params(axis='x', rotation=0, labelsize=11)
+    ax.set_yscale('log') # Set the y-axis to a logarithmic scale
+
+        # Customize grid and legend
+    ax.grid(axis='y', linestyle='--', alpha=0.7)
+    ax.legend(title="Policy", loc='upper left', ncol=1)
+
+    plt.tight_layout() # Adjust layout
     plt.show()
