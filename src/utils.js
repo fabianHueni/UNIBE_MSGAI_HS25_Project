@@ -23,6 +23,7 @@ export function measureAsync(fn) {
  * @param evt - Event object with job, route, latency, response, and timing metrics
  */
 export function logTo(el, evt) {
+    console.log(evt.job)
     if (!el) return;
     const row = document.createElement('tr');
     row.innerHTML = `

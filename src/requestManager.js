@@ -238,7 +238,7 @@ export class RequestManager {
         }
 
         // clean response
-        cleanedResponse = this._cleanResponse(response.answer);
+        cleanedResponse = this._cleanResponse(response);
 
         // evaluate result and store results
         const evalRes = this.evaluator.evaluate(cleanedResponse, job.groundTruth, latencyMs);
@@ -251,6 +251,8 @@ export class RequestManager {
                 console.error("Logger encountered an error:", error);
             }
         }
+
+        console.log(cleanedResponse)
 
         // logging on console
         console.log("🎯 Models Answer: " + response.answer +
@@ -339,10 +341,10 @@ export class RequestManager {
         if (route === 'cloud') this.stats.cloud++; else this.stats.device++;
         if (latency > 0) this.stats.totalLatencyMs += latency;
         this.stats.results.push({
-            job: job, 
-            route, 
-            latency, 
-            evalRes, 
+            job: job,
+            route,
+            latency,
+            evalRes,
             text,
             queueingTime: timingMetrics.queueingTime,
             inferenceTime: timingMetrics.inferenceTime,

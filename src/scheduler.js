@@ -1,4 +1,5 @@
 import {sleep} from './utils.js';
+import {DatasetLoader} from "./datasetLoader.js";
 
 /**
  * JobScheduler emits jobs based on predefined patterns.
@@ -12,8 +13,14 @@ export class JobScheduler {
         this._onJob = null; // callback
         this._datasetName = datasetName
         this._interArrivalTimeLambda = 2; // rate parameter for interarrival time generation in seconds
+        this.datasetLoader = new DatasetLoader(this._datasetName)
+        this.datasetLoader.loadDataset(this._datasetName).then((dataset) => {
+            this._dataset = dataset;
+        });
+    }
 
-        this._loadDataset(this._datasetName);
+    setDatasetName(datasetName) {
+        this._datasetName = datasetName;
     }
 
 
@@ -87,9 +94,10 @@ export class JobScheduler {
      * Reload the dataset (useful for running multiple experiments)
      */
     async reloadDataset() {
-        return new Promise((resolve, reject) => {
-            this._loadDataset(this._datasetName);
-            // Wait a bit for the fetch to complete
+        new Promise(async (resolve, reject) => {
+            this._dataset = await this.datasetLoader.loadDataset(this._datasetName);
+
+            // Wait a bit for t he fetch to complete TODO: is this necessary?
             const checkLoaded = setInterval(() => {
                 if (this._dataset && this._dataset.length > 0) {
                     clearInterval(checkLoaded);
@@ -118,6 +126,7 @@ export class JobScheduler {
                 id: item.id,
                 prompt: item.prompt, 
                 groundTruth: item.groundTruth,
+                dataset: this._datasetName,
                 timestamps: {
                     jobStart: Date.now(),
                     inferenceStart: null,
@@ -126,79 +135,6 @@ export class JobScheduler {
             };
             this._onJob(job);
         }
-    }
-
-    /**
-     * Load the dataset from CSV file based on the given name
-     * If a comma appears inside a quote (context) it is not interpreted as a delimiter
-     *
-     * @param name - Name of the csv dataset to load without file extension
-     * @private
-     */
-    _loadDataset(name) {
-        const path = `./dataset/${name}.csv`;
-
-        fetch(path)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Dataset file not found: ${path}`);
-                }
-                return response.text();
-            })
-            .then(data => {
-                const lines = data.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-                // drop header
-                lines.shift();
-
-                this._dataset = lines
-                    .filter(l => l.trim().length > 0)
-                    .map(line => {
-                        // inline CSV parse with quotes support
-                        const fields = [];
-                        let cur = '';
-                        let inQuotes = false;
-
-                        for (let i = 0; i < line.length; i++) {
-                            const ch = line[i];
-                            if (inQuotes) { // if we are in a quote we just look for the quote ending
-                                if (ch === '"') {
-                                    // escaped quote ""
-                                    if (i + 1 < line.length && line[i + 1] === '"') {
-                                        cur += '"';
-                                        i++;
-                                    } else {
-                                        inQuotes = false;
-                                    }
-                                } else {
-                                    cur += ch;
-                                }
-                            } else {   // only if we are not in a quote we count the comma as e delimiter
-                                if (ch === ',') {
-                                    fields.push(cur);
-                                    cur = '';
-                                } else if (ch === '"') {
-                                    inQuotes = true;
-                                } else {
-                                    cur += ch;
-                                }
-                            }
-                        }
-                        fields.push(cur);
-                    const [id, question, answer, context] = fields;
-
-                    // More explicit prompt to get concise answers
-                    const full_prompt = `Question: ${question}
-                                        Context: ${context}
-                                        Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
-                                        Answer:`;
-                                        
-                    return {id: id, prompt: full_prompt, groundTruth: answer};
-                });
-                console.log(`✅ Dataset '${name}' loaded with ${this._dataset.length} items.`);
-            })
-            .catch(error => {
-                console.error(error);
-            });
     }
 
 

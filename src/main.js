@@ -32,8 +32,9 @@ const requestManager = new RequestManager({
 });
 
 
-// instantiate the job scheduler with some mock prompts
-const scheduler = new JobScheduler('boolq_validation');
+// instantiate the job scheduler
+const datasetName = document.getElementById('dataset').value;
+const scheduler = new JobScheduler(datasetName);
 
 
 scheduler.onJob(async (job) => {
@@ -42,6 +43,11 @@ scheduler.onJob(async (job) => {
 
 
 // add event listeners for configuration inputs
+document.getElementById('dataset').addEventListener('change', (e) => {
+        scheduler.setDatasetName(e.target.value);
+        scheduler.reloadDataset();
+    }
+);
 document.getElementById('deviceModel').addEventListener('change', (e) => {
         onDeviceInferenceService.updateConfig(getModelSelection())
     }
@@ -116,6 +122,7 @@ const TARGET_JOBS = 500;
 document.getElementById('start1000Btn').addEventListener('click', async () => {
 
     // Get configuration from UI
+    const datasetName = document.getElementById('dataset').value;
     const pattern = document.getElementById('patternSelect').value;
     const routeStrategy = document.getElementById('routeStrategy').value;
     const cloudProb = parseFloat(document.getElementById('cloudProb').value);
@@ -140,6 +147,7 @@ document.getElementById('start1000Btn').addEventListener('click', async () => {
     currentExperiment = {
         deviceModel,
         cloudModel,
+        datasetName,
         routeStrategy,
         pattern,
         startTime: Date.now()
@@ -263,7 +271,7 @@ function buildExperimentCSV(stats) {
     const lines = [];
 
     // Header
-    lines.push('dataset_item_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,route_strategy,pattern,device_model,cloud_model');
+    lines.push('dataset_item_id,route,latency_ms,total_latency_ms,queueing_time_ms,inference_time_ms,exact_match,ground_truth,answer,job_start_ts,inference_start_ts,inference_end_ts,prompt,number_of_words,number_of_characters,experiment_start_time_ms,experiment_end_time_ms,dataset_name,route_strategy,pattern,device_model,cloud_model');
 
     // Data rows
     stats.stats.results.forEach((result, index) => {
@@ -285,6 +293,7 @@ function buildExperimentCSV(stats) {
             result.job.prompt.length,
             stats.experiment.startTime || 0,
             stats.experiment.endTime || 0,
+            stats.experiment.datasetName,
             stats.experiment.routeStrategy,
             stats.experiment.pattern,
             stats.experiment.deviceModel,
