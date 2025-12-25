@@ -52,6 +52,9 @@ export class DatasetLoader {
                             case 'ag_news_test':
                                 ({id, full_prompt, answer} = this._loadAGNewsLine(line));
                                 break;
+                            case 'lorem_ipsum_dataset':
+                                ({id, full_prompt, answer} = this._loadLoremIpsumLine(line));
+                                break;
                             default:
                                 throw new Error(`DatasetLoader: Unsupported dataset name '${name}'`);
                         }
@@ -149,6 +152,26 @@ export class DatasetLoader {
                                         Instructions: Answer with ONLY the id (1,2,3 or 4) of the class. Do not provide any explanation or additional text.
                                         News Title: ${title}
                                         News Description: ${description}
+                                        `;
+
+        return {id, full_prompt, answer}
+    }
+
+
+    /**
+     * Load a single line from the Lorem Ipsum dataset and prepare the prompt
+     *
+     * @param line - A single line from the lorem ipsum CSV dataset
+     * @returns {{full_prompt: string, answer: *, id: *}}
+     * @private
+     */
+    _loadLoremIpsumLine(line) {
+        let [id, text, char_count, word_count, answer] = this._parseCSVLine(line);
+
+        // set the prompt
+        const full_prompt = `Task: Determine the last word of the provided text and return it.
+                                        Instructions: Answer with ONLY the last word. Do not provide any explanation or additional text.
+                                        Text: ${text}
                                         `;
 
         return {id, full_prompt, answer}
