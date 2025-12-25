@@ -33,7 +33,7 @@ export function logTo(el, evt) {
         <td>${evt.totalLatency?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>
         <td>${evt.queueingTime?.toFixed(2) || 0}ms</td>
         <td>${evt.inferenceTime?.toFixed(2) || evt.latency?.toFixed(2) || 0}ms</td>
-        <td title="${evt.job.prompt}">${evt.job.prompt.substring(0, 30)}...</td>
+        <td title="${escapeHtml(evt.job.prompt)}">${escapeHtml(evt.job.prompt.substring(0, 30))}...</td>
         <td title="${evt.response || ''}">${(evt.response || '').substring(0, 30)}</td>
         <td>${evt.evalRes.exactMatch}</td>
     `;
@@ -41,6 +41,24 @@ export function logTo(el, evt) {
     el.scrollTop = el.scrollHeight;
 }
 
+/**
+ * Escapes HTML special characters in a string to prevent HTML injection
+ *
+ * @param str - Input string
+ * @returns {string} - Escaped string
+ */
+function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, (char) => {
+        const escapeMap = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;',
+        };
+        return escapeMap[char];
+    });
+}
 
 /**
  * Approximates the number of words in a given text string

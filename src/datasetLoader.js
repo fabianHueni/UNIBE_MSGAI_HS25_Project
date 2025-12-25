@@ -36,29 +36,24 @@ export class DatasetLoader {
                 this._dataset = lines
                     .filter(l => l.trim().length > 0)
                     .map(line => {
-                        let id, answer, full_prompt, question, context, text;
+                        let id, answer, full_prompt;
 
-                        // load different datasets based on name
-                        if (name === 'boolq_validation') {
-                            // parse line into fields handling quoted commas
-                            [id, question, answer, context] = this._parseCSVLine(line);
-
-                            // set the prompt
-                            full_prompt = `Question: ${question}
-                                        Context: ${context}
-                                        Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
-                                        Answer:`;
-                        } else if (name === 'spam_ham_dataset') {
-                            [id, text, answer] = this._parseCSVLine(line);
-
-                            // convert answer to string boolean
-                            answer = (answer.toLowerCase() === 'spam') ? 'true' : 'false';
-
-                            // set the prompt
-                            full_prompt = `Task: Determine whether the following message is spam or not.
-                                        Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
-                                        Message: ${text}
-                                        Answer:`;
+                        // load different datasets based on the dataset name
+                        switch (name) {
+                            case 'boolq_validation':
+                                ({id, full_prompt, answer} = this._loadBoolQLine(line));
+                                break;
+                            case 'spam_ham_dataset':
+                                ({id, full_prompt, answer} = this._loadSpamHamLine(line));
+                                break;
+                            case 'imdb_dataset':
+                                ({id, full_prompt, answer} = this._loadIMDBLine(line));
+                                break;
+                            case 'ag_news_test':
+                                ({id, full_prompt, answer} = this._loadAGNewsLine(line));
+                                break;
+                            default:
+                                throw new Error(`DatasetLoader: Unsupported dataset name '${name}'`);
                         }
 
                         return {id: id, prompt: full_prompt, groundTruth: answer};
@@ -72,6 +67,94 @@ export class DatasetLoader {
                 console.error(error);
             });
     }
+
+
+    /**
+     * Load a single line from the BoolQ dataset and prepare the prompt
+     *
+     * @param line - A single line from the BoolQ CSV dataset
+     * @returns {{full_prompt: string, answer: *, id: *}}
+     * @private
+     */
+    _loadBoolQLine(line) {
+        // parse line into fields handling quoted commas
+        const [id, question, answer, context] = this._parseCSVLine(line);
+
+        // set the prompt
+        const full_prompt = `Question: ${question}
+                                        Context: ${context}
+                                        Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
+                                        Answer:`;
+
+        return {id, full_prompt, answer}
+    }
+
+
+    /**
+     * Load a single line from the SpamHam dataset and prepare the prompt
+     *
+     * @param line - A single line from the SpamHam CSV dataset
+     * @returns {{full_prompt: string, answer: (string), id: *}}
+     * @private
+     */
+    _loadSpamHamLine(line) {
+        let [id, text, answer] = this._parseCSVLine(line);
+
+        // convert answer to string boolean
+        answer = (answer.toLowerCase() === 'spam') ? 'true' : 'false';
+
+        // set the prompt
+        const full_prompt = `Task: Determine whether the following message is spam or not.
+                                        Instructions: Answer with ONLY the word "true" or "false". Do not provide any explanation or additional text.
+                                        Message: ${text}
+                                        Answer:`;
+
+        return {id, full_prompt, answer}
+    }
+
+
+    /**
+     * Load a single line from the IMDB dataset and prepare the prompt
+     *
+     * @param line - A single line from the IMDB CSV dataset
+     * @returns {{full_prompt: string, answer: *, id: *}}
+     * @private
+     */
+    _loadIMDBLine(line) {
+        let [id, review, answer] = this._parseCSVLine(line);
+
+        // set the prompt
+        const full_prompt = `Task: Determine whether the sentiment of the following review is positive or negative.
+                                        Instructions: Answer with ONLY the word "positive" or "negative". Do not provide any explanation or additional text.
+                                        Review: ${review}
+                                        Sentiment:`;
+
+        return {id, full_prompt, answer}
+    }
+
+
+    /**
+     * Load a single line from the AG News dataset and prepare the prompt
+     *
+     * @param line - A single line from the AG News CSV dataset
+     * @returns {{full_prompt: string, answer: *, id: *}}
+     * @private
+     */
+    _loadAGNewsLine(line) {
+        let [id, answer, title, description] = this._parseCSVLine(line);
+
+        // set the prompt
+        const full_prompt = `Task: Determine whether the following news article belong to world, sports, business or Sci/Tech category.
+                                        Categories: World (1), Sports (2), Business (3), Sci/Tech (4).
+                                        Instructions: Answer with ONLY the id (1,2,3 or 4) of the class. Do not provide any explanation or additional text.
+                                        News Title: ${title}
+                                        News Description: ${description}
+                                        `;
+
+        return {id, full_prompt, answer}
+    }
+
+
 
     /**
      * Parse a single CSV line into fields, handling quoted fields with commas

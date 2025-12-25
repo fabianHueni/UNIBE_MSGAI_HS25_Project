@@ -22,3 +22,10 @@ Furthermore, it investigates two different scheduling policies to send request t
 ## Getting Started
 To run the experiments, open `index.html` in a web browser. Ensure that you have an API key for the OpenRouter service to run the cloud inference.
 You can then download the models and run them in the browser by leveraging the transformers.js library.
+
+
+## Dataset preparation
+To prepare the dataset for the experiments, we follow these steps:
+- Download the dataset from kaggle or huggingface
+- Add row indexes to each entry in the dataset for easy reference
+- Save the prepared dataset in the `dataset/` directory
